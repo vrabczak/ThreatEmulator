@@ -1,0 +1,48 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch App in Edge",
+      "type": "msedge",
+      "request": "launch",
+      "url": "http://127.0.0.1:5173/",
+      "webRoot": "${workspaceFolder}",
+      "preLaunchTask": "vite: dev",
+      "sourceMaps": true,
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"],
+      "resolveSourceMapLocations": ["${workspaceFolder}/src/**", "!**/node_modules/**"]
+    },
+    {
+      "name": "Launch App in Chrome",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://127.0.0.1:5173/",
+      "webRoot": "${workspaceFolder}",
+      "preLaunchTask": "vite: dev",
+      "sourceMaps": true,
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"],
+      "resolveSourceMapLocations": ["${workspaceFolder}/src/**", "!**/node_modules/**"]
+    },
+    {
+      "name": "Attach to Edge",
+      "type": "msedge",
+      "request": "attach",
+      "port": 9222,
+      "webRoot": "${workspaceFolder}",
+      "sourceMaps": true,
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"],
+      "resolveSourceMapLocations": ["${workspaceFolder}/src/**", "!**/node_modules/**"]
+    },
+    {
+      "name": "Open Production Preview in Edge",
+      "type": "msedge",
+      "request": "launch",
+      "url": "http://127.0.0.1:4173/",
+      "webRoot": "${workspaceFolder}",
+      "preLaunchTask": "npm: preview",
+      "sourceMaps": true,
+      "skipFiles": ["<node_internals>/**", "**/node_modules/**"],
+      "resolveSourceMapLocations": ["${workspaceFolder}/src/**", "!**/node_modules/**"]
+    }
+  ]
+}

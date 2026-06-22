@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Threat Emulator icon">
+  <rect width="512" height="512" rx="96" fill="#111827"/>
+  <circle cx="256" cy="256" r="176" fill="none" stroke="#f8fafc" stroke-width="28"/>
+  <circle cx="256" cy="256" r="92" fill="none" stroke="#f97316" stroke-width="24"/>
+  <path d="M256 82v108M256 322v108M82 256h108M322 256h108" stroke="#f8fafc" stroke-width="28" stroke-linecap="round"/>
+  <circle cx="256" cy="256" r="22" fill="#ef4444"/>
+</svg>

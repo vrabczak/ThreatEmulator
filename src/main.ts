@@ -1,0 +1,673 @@
+import { registerSW } from 'virtual:pwa-register';
+import { parseThreatCsvFile } from './domain/csv';
+import { calculateAgl, evaluateThreats } from './domain/evaluation';
+import { formatKilometers } from './domain/geo';
+import { calculateTerrainSampleSpacingM } from './domain/los';
+import { buildPrimaryWarning } from './domain/warning';
+import { GeolocationTracker, type GeolocationStatus } from './services/geolocation';
+import {
+  forgetPersistentTerrainFile,
+  pickPersistentTerrainFile,
+  restorePersistentTerrainFile,
+  supportsPersistentFilePicker
+} from './services/persistent-file';
+import { WorkerTerrainService } from './services/terrain-service';
+import type {
+  AircraftState,
+  TerrainMetadata,
+  TerrainSample,
+  ThreatCsvResult,
+  ThreatEvaluationSummary
+} from './domain/types';
+import './styles.css';
+
+const FEET_PER_METER = 3.280839895;
+const EVALUATION_INTERVAL_MS = 3000;
+
+registerSW({ immediate: true });
+
+const terrainService = new WorkerTerrainService();
+const persistentTerrainSupported = supportsPersistentFilePicker();
+
+let csvResult: ThreatCsvResult | null = null;
+let terrainMetadata: TerrainMetadata | null = null;
+let terrainLoadedFromPersistentHandle = false;
+let rememberedTerrainFileName: string | null = null;
+let aircraftState: AircraftState | null = null;
+let lastAircraftTerrainReason: string | null = null;
+let geolocationStatus: GeolocationStatus = 'idle';
+let geolocationMessage = 'GNSS watch not started.';
+let appMessage = 'Load a threat CSV, load an elevation GeoTIFF, enable GNSS, then start the emulator.';
+let appMessageTone: 'normal' | 'warning' | 'error' = 'normal';
+let emulatorActive = false;
+let evaluationTimer: number | null = null;
+let evaluationInFlight = false;
+let lastEvaluation: ThreatEvaluationSummary | null = null;
+
+const geolocationTracker = new GeolocationTracker(
+  (state) => {
+    aircraftState = state;
+    lastAircraftTerrainReason = null;
+    render();
+    void refreshAircraftAgl(state);
+  },
+  (status, message) => {
+    geolocationStatus = status;
+    geolocationMessage = message;
+    if (status === 'denied' || status === 'unavailable' || status === 'error') {
+      setMessage(message, 'error');
+    }
+    render();
+  }
+);
+
+document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
+  <main class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <h1>Threat Emulator</h1>
+        <span>Offline terrain threat warning</span>
+      </div>
+      <div id="emulatorState" class="status-pill">STOPPED</div>
+    </header>
+
+    <section class="warning-band" aria-live="polite">
+      <div id="primaryWarning" class="warning-text">NO ACTIVE THREAT</div>
+    </section>
+
+    <section class="content">
+      <div class="panel">
+        <div class="panel-header">Controls</div>
+        <div class="panel-body">
+          <div id="appMessage" class="message"></div>
+
+          <div class="controls">
+            <div class="field">
+              <label for="csvInput">Threat CSV</label>
+              <input id="csvInput" type="file" accept=".csv,text/csv" />
+            </div>
+            <div class="field">
+              <label for="terrainInput">Elevation GeoTIFF</label>
+              <input id="terrainInput" type="file" accept=".tif,.tiff,image/tiff" />
+              <div id="terrainPersistenceControls" class="button-row">
+                <button id="rememberTerrainButton" type="button">Remember GeoTIFF</button>
+                <button id="restoreTerrainButton" type="button">Restore GeoTIFF</button>
+              </div>
+            </div>
+            <div class="button-row three">
+              <button id="gnssButton" type="button">Enable GNSS</button>
+              <button id="startButton" class="primary" type="button">Start</button>
+              <button id="stopButton" class="danger" type="button">Stop</button>
+            </div>
+            <div class="button-row">
+              <button id="clearButton" type="button">Clear Files</button>
+              <button id="evaluateButton" type="button">Evaluate Now</button>
+            </div>
+          </div>
+
+          <div class="summary-list">
+            <div class="summary-row"><span>CSV</span><strong id="csvStatus">Not loaded</strong></div>
+            <div class="summary-row"><span>Terrain</span><strong id="terrainStatus">Not loaded</strong></div>
+            <div class="summary-row"><span>GNSS</span><strong id="gnssStatus">Idle</strong></div>
+            <div class="summary-row"><span>Evaluation</span><strong id="evaluationStatus">Not started</strong></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">Aircraft Status</div>
+        <div class="panel-body">
+          <div class="status-grid">
+            <div class="metric"><span class="metric-label">Latitude</span><span id="latValue" class="metric-value">--</span></div>
+            <div class="metric"><span class="metric-label">Longitude</span><span id="lonValue" class="metric-value">--</span></div>
+            <div class="metric"><span class="metric-label">GPS altitude</span><span id="altValue" class="metric-value">--</span></div>
+            <div class="metric"><span class="metric-label">Height above ground</span><span id="aglValue" class="metric-value">--</span></div>
+            <div class="metric"><span class="metric-label">GPS precision</span><span id="precisionValue" class="metric-value">--</span></div>
+            <div class="metric"><span class="metric-label">Track</span><span id="trackValue" class="metric-value">--</span></div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Threat</th>
+                  <th>State</th>
+                  <th>Distance</th>
+                  <th>Reason</th>
+                </tr>
+              </thead>
+              <tbody id="evaluationRows"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">Threat Preview</div>
+        <div class="panel-body">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>ID</th>
+                  <th>Name</th>
+                  <th>Position</th>
+                  <th>Range</th>
+                </tr>
+              </thead>
+              <tbody id="threatRows"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">Validation</div>
+        <div class="panel-body">
+          <div id="validationSummary" class="summary-list"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+`;
+
+const csvInput = getElement<HTMLInputElement>('csvInput');
+const terrainInput = getElement<HTMLInputElement>('terrainInput');
+const startButton = getElement<HTMLButtonElement>('startButton');
+const stopButton = getElement<HTMLButtonElement>('stopButton');
+const gnssButton = getElement<HTMLButtonElement>('gnssButton');
+const clearButton = getElement<HTMLButtonElement>('clearButton');
+const evaluateButton = getElement<HTMLButtonElement>('evaluateButton');
+const terrainPersistenceControls = getElement<HTMLDivElement>('terrainPersistenceControls');
+const rememberTerrainButton = getElement<HTMLButtonElement>('rememberTerrainButton');
+const restoreTerrainButton = getElement<HTMLButtonElement>('restoreTerrainButton');
+
+csvInput.addEventListener('change', () => {
+  const file = csvInput.files?.[0];
+  if (!file) {
+    return;
+  }
+  void loadCsv(file);
+});
+
+terrainInput.addEventListener('change', () => {
+  const file = terrainInput.files?.[0];
+  if (!file) {
+    return;
+  }
+  void loadManualTerrain(file);
+});
+
+rememberTerrainButton.addEventListener('click', () => {
+  void pickAndRememberTerrain();
+});
+
+restoreTerrainButton.addEventListener('click', () => {
+  void restoreRememberedTerrain({ requestPermission: true, startup: false });
+});
+
+gnssButton.addEventListener('click', () => {
+  geolocationTracker.start();
+  render();
+});
+
+startButton.addEventListener('click', () => {
+  startEmulator();
+});
+
+stopButton.addEventListener('click', () => {
+  stopEmulator('Emulator stopped.');
+});
+
+clearButton.addEventListener('click', () => {
+  void clearLoadedFiles();
+});
+
+evaluateButton.addEventListener('click', () => {
+  void evaluateNow();
+});
+
+async function loadCsv(file: File): Promise<void> {
+  csvResult = await parseThreatCsvFile(file);
+  lastEvaluation = null;
+
+  if (csvResult.errors.length > 0) {
+    setMessage(csvResult.errors.join(' '), 'error');
+  } else if (csvResult.invalidRows.length > 0) {
+    setMessage(`${csvResult.threats.length} valid threats loaded; ${csvResult.invalidRows.length} rows need correction.`, 'warning');
+  } else {
+    setMessage(`${csvResult.threats.length} valid threats loaded from ${file.name}.`, 'normal');
+  }
+  render();
+}
+
+async function loadManualTerrain(file: File): Promise<void> {
+  terrainLoadedFromPersistentHandle = false;
+  rememberedTerrainFileName = null;
+  if (persistentTerrainSupported) {
+    void forgetPersistentTerrainFile().catch(() => undefined);
+  }
+  await loadTerrain(file, 'manual');
+}
+
+async function pickAndRememberTerrain(): Promise<void> {
+  try {
+    const file = await pickPersistentTerrainFile();
+    if (!file) {
+      return;
+    }
+    rememberedTerrainFileName = file.name;
+    await loadTerrain(file, 'remembered');
+  } catch (error) {
+    setMessage(error instanceof Error ? error.message : 'Unable to remember GeoTIFF.', 'error');
+    render();
+  }
+}
+
+async function restoreRememberedTerrain(options: {
+  requestPermission: boolean;
+  startup: boolean;
+}): Promise<void> {
+  if (!persistentTerrainSupported) {
+    if (!options.startup) {
+      setMessage('Persistent GeoTIFF restore is not supported by this browser.', 'warning');
+      render();
+    }
+    return;
+  }
+
+  const restored = await restorePersistentTerrainFile({
+    requestPermission: options.requestPermission
+  });
+
+  if (restored.status === 'loaded') {
+    rememberedTerrainFileName = restored.file.name;
+    await loadTerrain(restored.file, 'restored');
+    return;
+  }
+
+  if (restored.status === 'permission-needed') {
+    rememberedTerrainFileName = restored.fileName;
+    setMessage(`Previous GeoTIFF ${restored.fileName} is remembered. Use Restore GeoTIFF to grant access.`, 'warning');
+    render();
+    return;
+  }
+
+  if (restored.status === 'unavailable') {
+    rememberedTerrainFileName = restored.fileName;
+    setMessage(restored.reason, 'error');
+    render();
+    return;
+  }
+
+  if (!options.startup) {
+    setMessage('No remembered GeoTIFF is available.', 'warning');
+    render();
+  }
+}
+
+async function clearLoadedFiles(): Promise<void> {
+  stopEmulator('Loaded files cleared.');
+  csvInput.value = '';
+  terrainInput.value = '';
+  csvResult = null;
+  terrainMetadata = null;
+  terrainLoadedFromPersistentHandle = false;
+  rememberedTerrainFileName = null;
+  lastEvaluation = null;
+  terrainService.cancelPending();
+  let clearMessage = 'Loaded files and remembered GeoTIFF cleared. Select local CSV and GeoTIFF files to continue.';
+  let clearTone: 'normal' | 'warning' = 'normal';
+  if (persistentTerrainSupported) {
+    try {
+      await forgetPersistentTerrainFile();
+    } catch (error) {
+      clearMessage =
+        error instanceof Error
+          ? `Loaded files cleared, but remembered GeoTIFF could not be removed: ${error.message}`
+          : 'Loaded files cleared, but remembered GeoTIFF could not be removed.';
+      clearTone = 'warning';
+    }
+  }
+  setMessage(clearMessage, clearTone);
+  render();
+}
+
+async function loadTerrain(file: File, source: 'manual' | 'remembered' | 'restored'): Promise<void> {
+  stopEmulator('Loading replacement terrain.');
+  terrainMetadata = null;
+  terrainLoadedFromPersistentHandle = source !== 'manual';
+  lastEvaluation = null;
+  setMessage(`Loading GeoTIFF metadata from ${file.name}.`, 'normal');
+  render();
+
+  try {
+    terrainMetadata = await terrainService.loadGeoTiff(file);
+    const warningText =
+      terrainMetadata.warnings.length > 0 ? ` ${terrainMetadata.warnings.join(' ')}` : '';
+    const persistenceText =
+      source === 'remembered'
+        ? ' GeoTIFF will be remembered on future launches.'
+        : source === 'restored'
+          ? ' Restored from remembered GeoTIFF.'
+          : '';
+    setMessage(`Terrain loaded: ${terrainMetadata.width} x ${terrainMetadata.height} cells.${warningText}${persistenceText}`, terrainMetadata.warnings.length > 0 ? 'warning' : 'normal');
+    if (aircraftState) {
+      void refreshAircraftAgl(aircraftState);
+    }
+  } catch (error) {
+    terrainMetadata = null;
+    terrainLoadedFromPersistentHandle = false;
+    setMessage(error instanceof Error ? error.message : 'Unable to load GeoTIFF.', 'error');
+  }
+  render();
+}
+
+function startEmulator(): void {
+  const readinessError = getReadinessError();
+  if (readinessError) {
+    setMessage(readinessError, 'error');
+    render();
+    return;
+  }
+
+  if (emulatorActive) {
+    return;
+  }
+
+  emulatorActive = true;
+  setMessage('Emulator active. Threats evaluate every 3 seconds.', 'normal');
+  void evaluateNow();
+  evaluationTimer = window.setInterval(() => {
+    void evaluateNow();
+  }, EVALUATION_INTERVAL_MS);
+  render();
+}
+
+function stopEmulator(message: string): void {
+  if (evaluationTimer !== null) {
+    window.clearInterval(evaluationTimer);
+    evaluationTimer = null;
+  }
+  emulatorActive = false;
+  terrainService.cancelPending();
+  setMessage(message, 'normal');
+  render();
+}
+
+async function evaluateNow(): Promise<void> {
+  if (evaluationInFlight) {
+    return;
+  }
+
+  const readinessError = getReadinessError();
+  if (readinessError) {
+    setMessage(readinessError, 'error');
+    render();
+    return;
+  }
+
+  evaluationInFlight = true;
+  render();
+  try {
+    lastEvaluation = await evaluateThreats(csvResult!.threats, aircraftState, terrainService);
+    const activeCount = lastEvaluation.results.filter((result) => result.state === 'active').length;
+    setMessage(activeCount > 0 ? `${activeCount} active threat${activeCount === 1 ? '' : 's'} detected.` : 'No active threats detected.', activeCount > 0 ? 'warning' : 'normal');
+  } catch (error) {
+    setMessage(error instanceof Error ? error.message : 'Threat evaluation failed.', 'error');
+  } finally {
+    evaluationInFlight = false;
+    render();
+  }
+}
+
+async function refreshAircraftAgl(state: AircraftState): Promise<void> {
+  if (!terrainMetadata || state.gpsAltitudeM === null) {
+    return;
+  }
+
+  let sample: TerrainSample;
+  try {
+    sample = await terrainService.sampleElevation(state.latitude, state.longitude);
+  } catch (error) {
+    if (aircraftState?.timestampMs === state.timestampMs) {
+      lastAircraftTerrainReason =
+        error instanceof Error ? error.message : 'Unable to read aircraft terrain elevation.';
+      render();
+    }
+    return;
+  }
+  if (aircraftState?.timestampMs !== state.timestampMs) {
+    return;
+  }
+
+  if (sample.status === 'ok') {
+    aircraftState = {
+      ...state,
+      aglM: calculateAgl(state.gpsAltitudeM, sample.elevationM)
+    };
+    lastAircraftTerrainReason = null;
+  } else {
+    aircraftState = {
+      ...state,
+      aglM: null
+    };
+    lastAircraftTerrainReason = sample.reason;
+  }
+  render();
+}
+
+function getReadinessError(): string | null {
+  if (!csvResult || csvResult.threats.length === 0) {
+    return 'Load a valid threat CSV before activating the emulator.';
+  }
+  if (!terrainMetadata) {
+    return 'Load a valid elevation GeoTIFF before activating the emulator.';
+  }
+  if (!aircraftState) {
+    return 'Enable GNSS and wait for an aircraft position before activating the emulator.';
+  }
+  if (aircraftState.gpsAltitudeM === null) {
+    return 'Aircraft GPS altitude is unavailable.';
+  }
+  return null;
+}
+
+function render(): void {
+  const primaryWarning = buildPrimaryWarning(lastEvaluation?.primary ?? null, aircraftState);
+  setText('primaryWarning', emulatorActive || lastEvaluation?.primary ? primaryWarning : 'EMULATOR STOPPED');
+  getElement('primaryWarning').classList.toggle('active', Boolean(lastEvaluation?.primary));
+  setText('emulatorState', emulatorActive ? 'ACTIVE' : 'STOPPED');
+  getElement('emulatorState').classList.toggle('active', emulatorActive);
+
+  const messageElement = getElement('appMessage');
+  messageElement.textContent = appMessage;
+  messageElement.className = `message${appMessageTone === 'error' ? ' error' : appMessageTone === 'warning' ? ' warning' : ''}`;
+
+  setText('csvStatus', renderCsvStatus());
+  setText('terrainStatus', renderTerrainStatus());
+  setText('gnssStatus', `${geolocationStatus.toUpperCase()} - ${geolocationMessage}`);
+  setText('evaluationStatus', renderEvaluationStatus());
+
+  setText('latValue', aircraftState ? aircraftState.latitude.toFixed(6) : '--');
+  setText('lonValue', aircraftState ? aircraftState.longitude.toFixed(6) : '--');
+  setText('altValue', aircraftState?.gpsAltitudeM !== null && aircraftState?.gpsAltitudeM !== undefined ? `${metersToFeet(aircraftState.gpsAltitudeM)} ft` : '--');
+  setText('aglValue', renderAgl());
+  setText('precisionValue', aircraftState?.gpsAccuracyM !== null && aircraftState?.gpsAccuracyM !== undefined ? `${aircraftState.gpsAccuracyM.toFixed(0)} m` : '--');
+  setText('trackValue', renderTrack());
+
+  renderThreatRows();
+  renderValidation();
+  renderEvaluationRows();
+
+  startButton.disabled = emulatorActive;
+  stopButton.disabled = !emulatorActive;
+  evaluateButton.disabled = evaluationInFlight;
+  terrainPersistenceControls.hidden = !persistentTerrainSupported;
+  rememberTerrainButton.disabled = !persistentTerrainSupported;
+  restoreTerrainButton.disabled = !persistentTerrainSupported;
+}
+
+function renderCsvStatus(): string {
+  if (!csvResult) {
+    return 'Not loaded';
+  }
+  if (csvResult.errors.length > 0) {
+    return `${csvResult.errors.length} file error${csvResult.errors.length === 1 ? '' : 's'}`;
+  }
+  return `${csvResult.threats.length} valid, ${csvResult.invalidRows.length} invalid`;
+}
+
+function renderTerrainStatus(): string {
+  if (!terrainMetadata) {
+    return 'Not loaded';
+  }
+  const centerLatitude = (terrainMetadata.bbox[1] + terrainMetadata.bbox[3]) / 2;
+  const resolutionM = calculateTerrainSampleSpacingM(terrainMetadata, centerLatitude);
+  const persistenceText = terrainLoadedFromPersistentHandle ? ', remembered' : '';
+  return `${terrainMetadata.width} x ${terrainMetadata.height}, resolution ${formatResolutionMeters(resolutionM)} m, ${terrainMetadata.fileName}${persistenceText}`;
+}
+
+function renderEvaluationStatus(): string {
+  if (evaluationInFlight) {
+    return 'Evaluating';
+  }
+  if (!lastEvaluation) {
+    return 'Not started';
+  }
+  return new Date(lastEvaluation.evaluatedAtMs).toLocaleTimeString();
+}
+
+function renderAgl(): string {
+  if (aircraftState?.aglM !== null && aircraftState?.aglM !== undefined) {
+    return `${metersToFeet(aircraftState.aglM)} ft`;
+  }
+  return lastAircraftTerrainReason ? `-- (${lastAircraftTerrainReason})` : '--';
+}
+
+function renderTrack(): string {
+  if (!aircraftState || aircraftState.trackDegrees === null) {
+    return 'Unavailable';
+  }
+  const age = aircraftState.trackAgeMs !== null ? `, ${Math.round(aircraftState.trackAgeMs / 1000)} s` : '';
+  return `${aircraftState.trackDegrees.toFixed(0)} deg (${aircraftState.trackSource}${age})`;
+}
+
+function renderThreatRows(): void {
+  const tbody = getElement<HTMLTableSectionElement>('threatRows');
+  const threats = csvResult?.threats ?? [];
+  if (threats.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" class="muted">No valid threats loaded.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = threats
+    .slice(0, 10)
+    .map(
+      (threat) => `
+        <tr>
+          <td>${escapeHtml(threat.id)}</td>
+          <td>${escapeHtml(threat.name)}</td>
+          <td>${threat.latitude.toFixed(5)}, ${threat.longitude.toFixed(5)}</td>
+          <td>${formatKilometers(threat.rangeKm)} km</td>
+        </tr>
+      `
+    )
+    .join('');
+}
+
+function renderValidation(): void {
+  const container = getElement('validationSummary');
+  const rows: string[] = [];
+
+  if (!csvResult) {
+    rows.push('<div class="summary-row"><span>CSV</span><strong class="muted">No file selected</strong></div>');
+  } else {
+    rows.push(`<div class="summary-row"><span>CSV file</span><strong>${escapeHtml(csvResult.fileName)}</strong></div>`);
+    for (const error of csvResult.errors) {
+      rows.push(`<div class="summary-row"><span>File error</span><strong class="bad">${escapeHtml(error)}</strong></div>`);
+    }
+    for (const invalid of csvResult.invalidRows.slice(0, 8)) {
+      rows.push(`<div class="summary-row"><span>Row ${invalid.rowNumber}</span><strong class="bad">${escapeHtml(invalid.errors.join(' '))}</strong></div>`);
+    }
+  }
+
+  if (!terrainMetadata) {
+    rows.push('<div class="summary-row"><span>GeoTIFF</span><strong class="muted">No file selected</strong></div>');
+  } else {
+    rows.push(`<div class="summary-row"><span>GeoTIFF file</span><strong>${escapeHtml(terrainMetadata.fileName)}</strong></div>`);
+    rows.push(`<div class="summary-row"><span>Coverage</span><strong>${terrainMetadata.bbox.map((value) => value.toFixed(4)).join(', ')}</strong></div>`);
+    for (const warning of terrainMetadata.warnings) {
+      rows.push(`<div class="summary-row"><span>GeoTIFF warning</span><strong class="warn">${escapeHtml(warning)}</strong></div>`);
+    }
+  }
+  if (persistentTerrainSupported && rememberedTerrainFileName) {
+    rows.push(`<div class="summary-row"><span>Remembered GeoTIFF</span><strong>${escapeHtml(rememberedTerrainFileName)}</strong></div>`);
+  }
+
+  container.innerHTML = rows.join('');
+}
+
+function renderEvaluationRows(): void {
+  const tbody = getElement<HTMLTableSectionElement>('evaluationRows');
+  const results = lastEvaluation?.results ?? [];
+  if (results.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="4" class="muted">No evaluation results.</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = results
+    .map((result) => {
+      const className =
+        result.state === 'active'
+          ? 'bad'
+          : result.state === 'terrain unavailable' || result.state === 'aircraft state unavailable'
+            ? 'warn'
+            : 'good';
+      return `
+        <tr>
+          <td>${escapeHtml(result.threat.name)}</td>
+          <td class="${className}">${result.state.toUpperCase()}</td>
+          <td>${result.distanceKm === null ? '--' : `${formatKilometers(result.distanceKm)} km`}</td>
+          <td>${escapeHtml(result.reason)}</td>
+        </tr>
+      `;
+    })
+    .join('');
+}
+
+function setMessage(message: string, tone: 'normal' | 'warning' | 'error'): void {
+  appMessage = message;
+  appMessageTone = tone;
+}
+
+function metersToFeet(meters: number): string {
+  return (meters * FEET_PER_METER).toFixed(0);
+}
+
+function formatResolutionMeters(meters: number): string {
+  return meters < 10 ? meters.toFixed(1) : meters.toFixed(0);
+}
+
+function setText(id: string, value: string): void {
+  getElement(id).textContent = value;
+}
+
+function getElement<T extends HTMLElement = HTMLElement>(id: string): T {
+  const element = document.getElementById(id);
+  if (!element) {
+    throw new Error(`Missing UI element: ${id}`);
+  }
+  return element as T;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+render();
+void restoreRememberedTerrain({ requestPermission: false, startup: true });
