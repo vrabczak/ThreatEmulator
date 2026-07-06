@@ -37,7 +37,7 @@ let aircraftState: AircraftState | null = null;
 let lastAircraftTerrainReason: string | null = null;
 let geolocationStatus: GeolocationStatus = 'idle';
 let geolocationMessage = 'GNSS watch not started.';
-let appMessage = 'Load a threat CSV, load an elevation GeoTIFF, enable GNSS, then start the emulator.';
+let appMessage = 'Load a threat CSV, import an elevation GeoTIFF, enable GNSS, then start the emulator.';
 let appMessageTone: 'normal' | 'warning' | 'error' = 'normal';
 let emulatorActive = false;
 let evaluationTimer: number | null = null;
@@ -84,14 +84,18 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           <div class="controls">
             <div class="field">
               <label for="csvInput">Threat CSV</label>
-              <input id="csvInput" type="file" accept=".csv,text/csv" />
+              <input id="csvInput" class="file-input-fallback" type="file" accept=".csv,text/csv" aria-label="Threat CSV file" />
+              <div class="file-picker-control">
+                <button id="csvImportButton" class="file-import-button" type="button">Import</button>
+                <div id="csvImportStatus" class="file-picker-status" aria-live="polite">No file selected</div>
+              </div>
             </div>
             <div class="field">
-              <label for="terrainInput">Elevation GeoTIFF</label>
-              <input id="terrainInput" type="file" accept=".tif,.tiff,image/tiff" />
-              <div id="terrainPersistenceControls" class="button-row">
-                <button id="rememberTerrainButton" type="button">Remember GeoTIFF</button>
-                <button id="restoreTerrainButton" type="button">Restore GeoTIFF</button>
+              <span class="field-label">Elevation GeoTIFF</span>
+              <input id="terrainInput" class="file-input-fallback" type="file" accept=".tif,.tiff,image/tiff" aria-label="Elevation GeoTIFF file" />
+              <div class="file-picker-control">
+                <button id="terrainImportButton" class="file-import-button" type="button">Import</button>
+                <div id="terrainImportStatus" class="file-picker-status" aria-live="polite">No file selected</div>
               </div>
             </div>
             <div class="button-row three">
@@ -172,14 +176,15 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
 
 const csvInput = getElement<HTMLInputElement>('csvInput');
 const terrainInput = getElement<HTMLInputElement>('terrainInput');
+const csvImportButton = getElement<HTMLButtonElement>('csvImportButton');
+const csvImportStatus = getElement<HTMLDivElement>('csvImportStatus');
 const startButton = getElement<HTMLButtonElement>('startButton');
 const stopButton = getElement<HTMLButtonElement>('stopButton');
 const gnssButton = getElement<HTMLButtonElement>('gnssButton');
 const clearButton = getElement<HTMLButtonElement>('clearButton');
 const evaluateButton = getElement<HTMLButtonElement>('evaluateButton');
-const terrainPersistenceControls = getElement<HTMLDivElement>('terrainPersistenceControls');
-const rememberTerrainButton = getElement<HTMLButtonElement>('rememberTerrainButton');
-const restoreTerrainButton = getElement<HTMLButtonElement>('restoreTerrainButton');
+const terrainImportButton = getElement<HTMLButtonElement>('terrainImportButton');
+const terrainImportStatus = getElement<HTMLDivElement>('terrainImportStatus');
 
 csvInput.addEventListener('change', () => {
   const file = csvInput.files?.[0];
@@ -187,6 +192,10 @@ csvInput.addEventListener('change', () => {
     return;
   }
   void loadCsv(file);
+});
+
+csvImportButton.addEventListener('click', () => {
+  csvInput.click();
 });
 
 terrainInput.addEventListener('change', () => {
@@ -197,12 +206,8 @@ terrainInput.addEventListener('change', () => {
   void loadManualTerrain(file);
 });
 
-rememberTerrainButton.addEventListener('click', () => {
-  void pickAndRememberTerrain();
-});
-
-restoreTerrainButton.addEventListener('click', () => {
-  void restoreRememberedTerrain({ requestPermission: true, startup: false });
+terrainImportButton.addEventListener('click', () => {
+  void importTerrain();
 });
 
 gnssButton.addEventListener('click', () => {
@@ -249,6 +254,29 @@ async function loadManualTerrain(file: File): Promise<void> {
   await loadTerrain(file, 'manual');
 }
 
+async function importTerrain(): Promise<void> {
+  if (persistentTerrainSupported && rememberedTerrainFileName) {
+    const shouldRestore = window.confirm(
+      `Restore remembered GeoTIFF "${rememberedTerrainFileName}"? Choose Cancel to import another file.`
+    );
+    if (shouldRestore) {
+      await restoreRememberedTerrain({ requestPermission: true, startup: false });
+      return;
+    }
+  }
+
+  await pickNewTerrain();
+}
+
+async function pickNewTerrain(): Promise<void> {
+  if (persistentTerrainSupported) {
+    await pickAndRememberTerrain();
+    return;
+  }
+
+  terrainInput.click();
+}
+
 async function pickAndRememberTerrain(): Promise<void> {
   try {
     const file = await pickPersistentTerrainFile();
@@ -266,13 +294,13 @@ async function pickAndRememberTerrain(): Promise<void> {
 async function restoreRememberedTerrain(options: {
   requestPermission: boolean;
   startup: boolean;
-}): Promise<void> {
+}): Promise<boolean> {
   if (!persistentTerrainSupported) {
     if (!options.startup) {
       setMessage('Persistent GeoTIFF restore is not supported by this browser.', 'warning');
       render();
     }
-    return;
+    return false;
   }
 
   const restored = await restorePersistentTerrainFile({
@@ -282,27 +310,28 @@ async function restoreRememberedTerrain(options: {
   if (restored.status === 'loaded') {
     rememberedTerrainFileName = restored.file.name;
     await loadTerrain(restored.file, 'restored');
-    return;
+    return true;
   }
 
   if (restored.status === 'permission-needed') {
     rememberedTerrainFileName = restored.fileName;
-    setMessage(`Previous GeoTIFF ${restored.fileName} is remembered. Use Restore GeoTIFF to grant access.`, 'warning');
+    setMessage(`Previous GeoTIFF ${restored.fileName} is remembered. Use Import to restore it or import another file.`, 'warning');
     render();
-    return;
+    return false;
   }
 
   if (restored.status === 'unavailable') {
     rememberedTerrainFileName = restored.fileName;
     setMessage(restored.reason, 'error');
     render();
-    return;
+    return false;
   }
 
   if (!options.startup) {
     setMessage('No remembered GeoTIFF is available.', 'warning');
     render();
   }
+  return false;
 }
 
 async function clearLoadedFiles(): Promise<void> {
@@ -315,7 +344,7 @@ async function clearLoadedFiles(): Promise<void> {
   rememberedTerrainFileName = null;
   lastEvaluation = null;
   terrainService.cancelPending();
-  let clearMessage = 'Loaded files and remembered GeoTIFF cleared. Select local CSV and GeoTIFF files to continue.';
+  let clearMessage = 'Loaded files and remembered GeoTIFF cleared. Select a local CSV and import a GeoTIFF to continue.';
   let clearTone: 'normal' | 'warning' = 'normal';
   if (persistentTerrainSupported) {
     try {
@@ -483,8 +512,10 @@ function render(): void {
   messageElement.textContent = appMessage;
   messageElement.className = `message${appMessageTone === 'error' ? ' error' : appMessageTone === 'warning' ? ' warning' : ''}`;
 
+  csvImportStatus.textContent = renderCsvImportStatus();
   setText('csvStatus', renderCsvStatus());
   setText('terrainStatus', renderTerrainStatus());
+  terrainImportStatus.textContent = renderTerrainImportStatus();
   setText('gnssStatus', `${geolocationStatus.toUpperCase()} - ${geolocationMessage}`);
   setText('evaluationStatus', renderEvaluationStatus());
 
@@ -502,9 +533,6 @@ function render(): void {
   startButton.disabled = emulatorActive;
   stopButton.disabled = !emulatorActive;
   evaluateButton.disabled = evaluationInFlight;
-  terrainPersistenceControls.hidden = !persistentTerrainSupported;
-  rememberTerrainButton.disabled = !persistentTerrainSupported;
-  restoreTerrainButton.disabled = !persistentTerrainSupported;
 }
 
 function renderCsvStatus(): string {
@@ -517,6 +545,14 @@ function renderCsvStatus(): string {
   return `${csvResult.threats.length} valid, ${csvResult.invalidRows.length} invalid`;
 }
 
+function renderCsvImportStatus(): string {
+  if (csvResult) {
+    return csvResult.fileName;
+  }
+
+  return csvInput.files?.[0]?.name ?? 'No file selected';
+}
+
 function renderTerrainStatus(): string {
   if (!terrainMetadata) {
     return 'Not loaded';
@@ -525,6 +561,23 @@ function renderTerrainStatus(): string {
   const resolutionM = calculateTerrainSampleSpacingM(terrainMetadata, centerLatitude);
   const persistenceText = terrainLoadedFromPersistentHandle ? ', remembered' : '';
   return `${terrainMetadata.width} x ${terrainMetadata.height}, resolution ${formatResolutionMeters(resolutionM)} m, ${terrainMetadata.fileName}${persistenceText}`;
+}
+
+function renderTerrainImportStatus(): string {
+  if (terrainMetadata) {
+    return terrainMetadata.fileName;
+  }
+
+  const fallbackFileName = terrainInput.files?.[0]?.name;
+  if (fallbackFileName) {
+    return fallbackFileName;
+  }
+
+  if (persistentTerrainSupported && rememberedTerrainFileName) {
+    return `Remembered: ${rememberedTerrainFileName}`;
+  }
+
+  return 'No file selected';
 }
 
 function renderEvaluationStatus(): string {
