@@ -178,10 +178,6 @@ input {
   gap: 0.65rem;
 }
 
-.button-row.three {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
 button {
   min-height: 3rem;
   padding: 0.7rem 0.85rem;
@@ -236,7 +232,7 @@ button:disabled {
 
 .file-picker-control {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 0.65rem;
   width: 100%;
   min-height: 3rem;
@@ -252,12 +248,16 @@ button:disabled {
 }
 
 .file-picker-status {
+  display: grid;
   min-width: 0;
   flex: 1 1 auto;
   color: #374151;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+}
+
+.file-picker-status .summary-row {
+  gap: 0.5rem;
+  padding: 0.25rem 0;
 }
 
 .status-grid {
@@ -393,7 +393,6 @@ th {
   }
 
   .button-row,
-  .button-row.three,
   .status-grid {
     grid-template-columns: 1fr;
   }

@@ -58,10 +58,10 @@ npm run preview
 1. Open the app in a browser.
 2. Select a semicolon-delimited threat CSV file.
 3. Select a local elevation GeoTIFF file, or use `Remember GeoTIFF` on compatible browsers to restore it on future launches.
-4. Enable GNSS and grant browser geolocation permission.
+4. Grant browser geolocation permission when prompted.
 5. Wait for an aircraft position with GPS altitude.
 6. Start the emulator.
-7. Review the primary warning, aircraft status, threat preview, validation output, and evaluation table.
+7. Review the primary warning, aircraft status, threat preview, import validation output, and evaluation table.
 
 The repository includes `fixtures/sample-threats.csv` as a small CSV example.
 

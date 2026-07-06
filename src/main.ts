@@ -2,7 +2,6 @@ import { registerSW } from 'virtual:pwa-register';
 import { parseThreatCsvFile } from './domain/csv';
 import { calculateAgl, evaluateThreats } from './domain/evaluation';
 import { formatThreatRange } from './domain/geo';
-import { calculateTerrainSampleSpacingM } from './domain/los';
 import { buildPrimaryWarning } from './domain/warning';
 import { GeolocationTracker, type GeolocationStatus } from './services/geolocation';
 import {
@@ -36,8 +35,8 @@ let rememberedTerrainFileName: string | null = null;
 let aircraftState: AircraftState | null = null;
 let lastAircraftTerrainReason: string | null = null;
 let geolocationStatus: GeolocationStatus = 'idle';
-let geolocationMessage = 'GNSS watch not started.';
-let appMessage = 'Load a threat CSV, import an elevation GeoTIFF, enable GNSS, then start the emulator.';
+let geolocationMessage = 'GNSS watch starting.';
+let appMessage = 'Load a threat CSV, import an elevation GeoTIFF, grant GNSS permission, then start the emulator.';
 let appMessageTone: 'normal' | 'warning' | 'error' = 'normal';
 let emulatorActive = false;
 let evaluationTimer: number | null = null;
@@ -98,22 +97,14 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
                 <div id="terrainImportStatus" class="file-picker-status" aria-live="polite">No file selected</div>
               </div>
             </div>
-            <div class="button-row three">
-              <button id="gnssButton" type="button">Enable GNSS</button>
+            <div class="button-row">
               <button id="startButton" class="primary" type="button">Start</button>
               <button id="stopButton" class="danger" type="button">Stop</button>
-            </div>
-            <div class="button-row">
-              <button id="clearButton" type="button">Clear Files</button>
-              <button id="evaluateButton" type="button">Evaluate Now</button>
             </div>
           </div>
 
           <div class="summary-list">
-            <div class="summary-row"><span>CSV</span><strong id="csvStatus">Not loaded</strong></div>
-            <div class="summary-row"><span>Terrain</span><strong id="terrainStatus">Not loaded</strong></div>
             <div class="summary-row"><span>GNSS</span><strong id="gnssStatus">Idle</strong></div>
-            <div class="summary-row"><span>Evaluation</span><strong id="evaluationStatus">Not started</strong></div>
           </div>
         </div>
       </div>
@@ -164,12 +155,6 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         </div>
       </div>
 
-      <div class="panel">
-        <div class="panel-header">Validation</div>
-        <div class="panel-body">
-          <div id="validationSummary" class="summary-list"></div>
-        </div>
-      </div>
     </section>
   </main>
 `;
@@ -180,9 +165,6 @@ const csvImportButton = getElement<HTMLButtonElement>('csvImportButton');
 const csvImportStatus = getElement<HTMLDivElement>('csvImportStatus');
 const startButton = getElement<HTMLButtonElement>('startButton');
 const stopButton = getElement<HTMLButtonElement>('stopButton');
-const gnssButton = getElement<HTMLButtonElement>('gnssButton');
-const clearButton = getElement<HTMLButtonElement>('clearButton');
-const evaluateButton = getElement<HTMLButtonElement>('evaluateButton');
 const terrainImportButton = getElement<HTMLButtonElement>('terrainImportButton');
 const terrainImportStatus = getElement<HTMLDivElement>('terrainImportStatus');
 
@@ -210,25 +192,12 @@ terrainImportButton.addEventListener('click', () => {
   void importTerrain();
 });
 
-gnssButton.addEventListener('click', () => {
-  geolocationTracker.start();
-  render();
-});
-
 startButton.addEventListener('click', () => {
   startEmulator();
 });
 
 stopButton.addEventListener('click', () => {
   stopEmulator('Emulator stopped.');
-});
-
-clearButton.addEventListener('click', () => {
-  void clearLoadedFiles();
-});
-
-evaluateButton.addEventListener('click', () => {
-  void evaluateNow();
 });
 
 async function loadCsv(file: File): Promise<void> {
@@ -332,33 +301,6 @@ async function restoreRememberedTerrain(options: {
     render();
   }
   return false;
-}
-
-async function clearLoadedFiles(): Promise<void> {
-  stopEmulator('Loaded files cleared.');
-  csvInput.value = '';
-  terrainInput.value = '';
-  csvResult = null;
-  terrainMetadata = null;
-  terrainLoadedFromPersistentHandle = false;
-  rememberedTerrainFileName = null;
-  lastEvaluation = null;
-  terrainService.cancelPending();
-  let clearMessage = 'Loaded files and remembered GeoTIFF cleared. Select a local CSV and import a GeoTIFF to continue.';
-  let clearTone: 'normal' | 'warning' = 'normal';
-  if (persistentTerrainSupported) {
-    try {
-      await forgetPersistentTerrainFile();
-    } catch (error) {
-      clearMessage =
-        error instanceof Error
-          ? `Loaded files cleared, but remembered GeoTIFF could not be removed: ${error.message}`
-          : 'Loaded files cleared, but remembered GeoTIFF could not be removed.';
-      clearTone = 'warning';
-    }
-  }
-  setMessage(clearMessage, clearTone);
-  render();
 }
 
 async function loadTerrain(file: File, source: 'manual' | 'remembered' | 'restored'): Promise<void> {
@@ -493,7 +435,7 @@ function getReadinessError(): string | null {
     return 'Load a valid elevation GeoTIFF before activating the emulator.';
   }
   if (!aircraftState) {
-    return 'Enable GNSS and wait for an aircraft position before activating the emulator.';
+    return 'Grant GNSS permission and wait for an aircraft position before activating the emulator.';
   }
   if (aircraftState.gpsAltitudeM === null) {
     return 'Aircraft GPS altitude is unavailable.';
@@ -512,12 +454,9 @@ function render(): void {
   messageElement.textContent = appMessage;
   messageElement.className = `message${appMessageTone === 'error' ? ' error' : appMessageTone === 'warning' ? ' warning' : ''}`;
 
-  csvImportStatus.textContent = renderCsvImportStatus();
-  setText('csvStatus', renderCsvStatus());
-  setText('terrainStatus', renderTerrainStatus());
-  terrainImportStatus.textContent = renderTerrainImportStatus();
+  csvImportStatus.innerHTML = renderCsvImportStatus();
+  terrainImportStatus.innerHTML = renderTerrainImportStatus();
   setText('gnssStatus', `${geolocationStatus.toUpperCase()} - ${geolocationMessage}`);
-  setText('evaluationStatus', renderEvaluationStatus());
 
   setText('latValue', aircraftState ? aircraftState.latitude.toFixed(6) : '--');
   setText('lonValue', aircraftState ? aircraftState.longitude.toFixed(6) : '--');
@@ -527,67 +466,49 @@ function render(): void {
   setText('trackValue', renderTrack());
 
   renderThreatRows();
-  renderValidation();
   renderEvaluationRows();
 
   startButton.disabled = emulatorActive;
   stopButton.disabled = !emulatorActive;
-  evaluateButton.disabled = evaluationInFlight;
-}
-
-function renderCsvStatus(): string {
-  if (!csvResult) {
-    return 'Not loaded';
-  }
-  if (csvResult.errors.length > 0) {
-    return `${csvResult.errors.length} file error${csvResult.errors.length === 1 ? '' : 's'}`;
-  }
-  return `${csvResult.threats.length} valid, ${csvResult.invalidRows.length} invalid`;
 }
 
 function renderCsvImportStatus(): string {
-  if (csvResult) {
-    return csvResult.fileName;
+  const rows: string[] = [];
+
+  if (!csvResult) {
+    rows.push(`<div class="summary-row"><span>CSV</span><strong class="muted">${escapeHtml(csvInput.files?.[0]?.name ?? 'No file selected')}</strong></div>`);
+    return rows.join('');
   }
 
-  return csvInput.files?.[0]?.name ?? 'No file selected';
-}
-
-function renderTerrainStatus(): string {
-  if (!terrainMetadata) {
-    return 'Not loaded';
+  rows.push(`<div class="summary-row"><span>CSV file</span><strong>${escapeHtml(csvResult.fileName)}</strong></div>`);
+  for (const error of csvResult.errors) {
+    rows.push(`<div class="summary-row"><span>File error</span><strong class="bad">${escapeHtml(error)}</strong></div>`);
   }
-  const centerLatitude = (terrainMetadata.bbox[1] + terrainMetadata.bbox[3]) / 2;
-  const resolutionM = calculateTerrainSampleSpacingM(terrainMetadata, centerLatitude);
-  const persistenceText = terrainLoadedFromPersistentHandle ? ', remembered' : '';
-  return `${terrainMetadata.width} x ${terrainMetadata.height}, resolution ${formatResolutionMeters(resolutionM)} m, ${terrainMetadata.fileName}${persistenceText}`;
+  for (const invalid of csvResult.invalidRows.slice(0, 8)) {
+    rows.push(`<div class="summary-row"><span>Row ${invalid.rowNumber}</span><strong class="bad">${escapeHtml(invalid.errors.join(' '))}</strong></div>`);
+  }
+
+  return rows.join('');
 }
 
 function renderTerrainImportStatus(): string {
-  if (terrainMetadata) {
-    return terrainMetadata.fileName;
-  }
+  const rows: string[] = [];
 
-  const fallbackFileName = terrainInput.files?.[0]?.name;
-  if (fallbackFileName) {
-    return fallbackFileName;
+  if (!terrainMetadata) {
+    rows.push(`<div class="summary-row"><span>GeoTIFF</span><strong class="muted">${escapeHtml(terrainInput.files?.[0]?.name ?? 'No file selected')}</strong></div>`);
+  } else {
+    rows.push(`<div class="summary-row"><span>GeoTIFF file</span><strong>${escapeHtml(terrainMetadata.fileName)}</strong></div>`);
+    rows.push(`<div class="summary-row"><span>Coverage</span><strong>${terrainMetadata.bbox.map((value) => value.toFixed(4)).join(', ')}</strong></div>`);
+    for (const warning of terrainMetadata.warnings) {
+      rows.push(`<div class="summary-row"><span>GeoTIFF warning</span><strong class="warn">${escapeHtml(warning)}</strong></div>`);
+    }
   }
 
   if (persistentTerrainSupported && rememberedTerrainFileName) {
-    return `Remembered: ${rememberedTerrainFileName}`;
+    rows.push(`<div class="summary-row"><span>Remembered GeoTIFF</span><strong>${escapeHtml(rememberedTerrainFileName)}</strong></div>`);
   }
 
-  return 'No file selected';
-}
-
-function renderEvaluationStatus(): string {
-  if (evaluationInFlight) {
-    return 'Evaluating';
-  }
-  if (!lastEvaluation) {
-    return 'Not started';
-  }
-  return new Date(lastEvaluation.evaluatedAtMs).toLocaleTimeString();
+  return rows.join('');
 }
 
 function renderAgl(): string {
@@ -628,38 +549,6 @@ function renderThreatRows(): void {
     .join('');
 }
 
-function renderValidation(): void {
-  const container = getElement('validationSummary');
-  const rows: string[] = [];
-
-  if (!csvResult) {
-    rows.push('<div class="summary-row"><span>CSV</span><strong class="muted">No file selected</strong></div>');
-  } else {
-    rows.push(`<div class="summary-row"><span>CSV file</span><strong>${escapeHtml(csvResult.fileName)}</strong></div>`);
-    for (const error of csvResult.errors) {
-      rows.push(`<div class="summary-row"><span>File error</span><strong class="bad">${escapeHtml(error)}</strong></div>`);
-    }
-    for (const invalid of csvResult.invalidRows.slice(0, 8)) {
-      rows.push(`<div class="summary-row"><span>Row ${invalid.rowNumber}</span><strong class="bad">${escapeHtml(invalid.errors.join(' '))}</strong></div>`);
-    }
-  }
-
-  if (!terrainMetadata) {
-    rows.push('<div class="summary-row"><span>GeoTIFF</span><strong class="muted">No file selected</strong></div>');
-  } else {
-    rows.push(`<div class="summary-row"><span>GeoTIFF file</span><strong>${escapeHtml(terrainMetadata.fileName)}</strong></div>`);
-    rows.push(`<div class="summary-row"><span>Coverage</span><strong>${terrainMetadata.bbox.map((value) => value.toFixed(4)).join(', ')}</strong></div>`);
-    for (const warning of terrainMetadata.warnings) {
-      rows.push(`<div class="summary-row"><span>GeoTIFF warning</span><strong class="warn">${escapeHtml(warning)}</strong></div>`);
-    }
-  }
-  if (persistentTerrainSupported && rememberedTerrainFileName) {
-    rows.push(`<div class="summary-row"><span>Remembered GeoTIFF</span><strong>${escapeHtml(rememberedTerrainFileName)}</strong></div>`);
-  }
-
-  container.innerHTML = rows.join('');
-}
-
 function renderEvaluationRows(): void {
   const tbody = getElement<HTMLTableSectionElement>('evaluationRows');
   const results = lastEvaluation?.results ?? [];
@@ -697,10 +586,6 @@ function metersToFeet(meters: number): string {
   return (meters * FEET_PER_METER).toFixed(0);
 }
 
-function formatResolutionMeters(meters: number): string {
-  return meters < 10 ? meters.toFixed(1) : meters.toFixed(0);
-}
-
 function setText(id: string, value: string): void {
   getElement(id).textContent = value;
 }
@@ -723,4 +608,5 @@ function escapeHtml(value: string): string {
 }
 
 render();
+geolocationTracker.start();
 void restoreRememberedTerrain({ requestPermission: false, startup: true });
