@@ -1,5 +1,5 @@
 import {
-  formatKilometers,
+  formatThreatRange,
   initialBearingDegrees,
   relativeBearingDegrees,
   type LatLon
@@ -28,14 +28,16 @@ export function buildPrimaryWarning(
     return 'NO ACTIVE THREAT';
   }
 
+  const rangeText = formatThreatRange(result.distanceKm).toUpperCase();
+
   if (!aircraft || aircraft.trackDegrees === null) {
-    return `THREAT ${result.threat.name.toUpperCase()} ${formatKilometers(result.distanceKm)} KM TRACK UNAVAILABLE`;
+    return `THREAT ${result.threat.name.toUpperCase()} ${rangeText} TRACK UNAVAILABLE`;
   }
 
   const clock = clockCodeForThreat(aircraft, result.threat);
   if (clock === null) {
-    return `THREAT ${result.threat.name.toUpperCase()} ${formatKilometers(result.distanceKm)} KM TRACK UNAVAILABLE`;
+    return `THREAT ${result.threat.name.toUpperCase()} ${rangeText} TRACK UNAVAILABLE`;
   }
 
-  return `THREAT ${clock} O'CLOCK ${formatKilometers(result.distanceKm)} KM`;
+  return `THREAT ${clock} O'CLOCK ${rangeText}`;
 }

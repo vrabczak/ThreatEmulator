@@ -1,7 +1,7 @@
 import { registerSW } from 'virtual:pwa-register';
 import { parseThreatCsvFile } from './domain/csv';
 import { calculateAgl, evaluateThreats } from './domain/evaluation';
-import { formatKilometers } from './domain/geo';
+import { formatThreatRange } from './domain/geo';
 import { calculateTerrainSampleSpacingM } from './domain/los';
 import { buildPrimaryWarning } from './domain/warning';
 import { GeolocationTracker, type GeolocationStatus } from './services/geolocation';
@@ -568,7 +568,7 @@ function renderThreatRows(): void {
           <td>${escapeHtml(threat.id)}</td>
           <td>${escapeHtml(threat.name)}</td>
           <td>${threat.latitude.toFixed(5)}, ${threat.longitude.toFixed(5)}</td>
-          <td>${formatKilometers(threat.rangeKm)} km</td>
+          <td>${formatThreatRange(threat.rangeKm)}</td>
         </tr>
       `
     )
@@ -627,7 +627,7 @@ function renderEvaluationRows(): void {
         <tr>
           <td>${escapeHtml(result.threat.name)}</td>
           <td class="${className}">${result.state.toUpperCase()}</td>
-          <td>${result.distanceKm === null ? '--' : `${formatKilometers(result.distanceKm)} km`}</td>
+          <td>${result.distanceKm === null ? '--' : formatThreatRange(result.distanceKm)}</td>
           <td>${escapeHtml(result.reason)}</td>
         </tr>
       `;

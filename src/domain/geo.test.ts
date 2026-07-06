@@ -1,6 +1,7 @@
 import {
   coordinateToPixel,
   distanceMeters,
+  formatThreatRange,
   initialBearingDegrees,
   relativeBearingDegrees
 } from './geo';
@@ -36,5 +37,17 @@ describe('geo calculations', () => {
 
     expect(pixel).toEqual({ x: 50, y: 50 });
     expect(coordinateToPixel(48, 14.5, { bbox: [14, 49, 15, 50], width: 100, height: 100 })).toBeNull();
+  });
+
+  it('formats threat ranges using display buckets', () => {
+    expect(formatThreatRange(0)).toBe('100 m');
+    expect(formatThreatRange(0.04)).toBe('100 m');
+    expect(formatThreatRange(0.24)).toBe('200 m');
+    expect(formatThreatRange(0.95)).toBe('1 km');
+    expect(formatThreatRange(1.26)).toBe('1.5 km');
+    expect(formatThreatRange(2.49)).toBe('2 km');
+    expect(formatThreatRange(2.5)).toBe('3 km');
+    expect(formatThreatRange(7.2)).toBe('7 km');
+    expect(formatThreatRange(7.5)).toBe('8 km');
   });
 });

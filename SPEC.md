@@ -23,7 +23,8 @@ The application runs entirely in the browser, uses user-selected local files, an
 - Warnings are visual only.
 - The primary warning is a large text message.
 - If multiple threats are active, the closest threat has priority.
-- Distance is displayed in kilometers with one decimal place.
+- Distance is displayed using standard threat range buckets: 100m through 900m in
+  100m steps, then 1km, 1.5km, 2km, and whole-kilometer buckets from 3km upward.
 - V1 does not include a map. The user-facing output is text/status only.
 - The app should be installable as a PWA for offline launch.
 - CSV files are expected to be no larger than 1 MB.
@@ -90,7 +91,7 @@ Validation rules:
 - Latitude must be between `-90` and `90`.
 - Longitude must be between `-180` and `180`.
 - Height must be greater than or equal to `0`.
-- Range must be greater than `0`.
+- Range must be greater than or equal to `0`; zero-range threats display as `100 m`.
 - Invalid rows should be reported without crashing the app.
 - CSV file size is expected to be at most 1 MB.
 
@@ -201,8 +202,12 @@ Clock-code calculation:
 
 Distance formatting:
 
-- Use kilometers only.
-- Round to one decimal place.
+- Show one standard range bucket.
+- Use 100m through 900m in 100m steps, then 1km, 1.5km, 2km, and
+  whole-kilometer buckets from 3km upward.
+- The lowest displayed bucket is 100m, including for a raw distance or threat
+  range of 0.
+- Round to the nearest bucket; if exactly between two buckets, use the larger bucket.
 
 Multiple active threats:
 

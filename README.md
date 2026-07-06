@@ -89,7 +89,7 @@ Validation rules:
 - Latitude must be between `-90` and `90`.
 - Longitude must be between `-180` and `180`.
 - Height must be greater than or equal to `0`.
-- Range must be greater than `0`.
+- Range must be greater than or equal to `0`; zero-range threats display as `100 m`.
 - CSV files are expected to be no larger than 1 MB.
 
 ## Terrain GeoTIFF

@@ -63,9 +63,9 @@ describe('warning call', () => {
   });
 
   it('builds primary warning text', () => {
-    expect(buildPrimaryWarning(activeResult, aircraft)).toBe("THREAT 3 O'CLOCK 7.2 KM");
+    expect(buildPrimaryWarning(activeResult, aircraft)).toBe("THREAT 3 O'CLOCK 7 KM");
     expect(buildPrimaryWarning(activeResult, { ...aircraft, trackDegrees: null })).toBe(
-      'THREAT ALPHA 7.2 KM TRACK UNAVAILABLE'
+      'THREAT ALPHA 7 KM TRACK UNAVAILABLE'
     );
   });
 });

@@ -100,8 +100,8 @@ function validateThreatRow(row: CsvRow): { threat: Threat; errors: [] } | { erro
   if (heightAglM === null || heightAglM < 0) {
     errors.push('height_agl_m must be greater than or equal to 0.');
   }
-  if (rangeKm === null || rangeKm <= 0) {
-    errors.push('range_km must be greater than 0.');
+  if (rangeKm === null || rangeKm < 0) {
+    errors.push('range_km must be greater than or equal to 0.');
   }
 
   if (errors.length > 0) {

@@ -118,3 +118,56 @@ export function coordinateToPixel(
 export function formatKilometers(distanceKm: number): string {
   return distanceKm.toFixed(1);
 }
+
+const DISPLAY_RANGE_BUCKETS_KM = [
+  0.1,
+  0.2,
+  0.3,
+  0.4,
+  0.5,
+  0.6,
+  0.7,
+  0.8,
+  0.9,
+  1,
+  1.5,
+  2
+] as const;
+const RANGE_BUCKET_TIE_EPSILON = 1e-12;
+
+export function formatThreatRange(distanceKm: number): string {
+  const bucketKm = displayRangeBucketKm(distanceKm);
+  if (bucketKm < 1) {
+    return `${Math.round(bucketKm * 1000)} m`;
+  }
+  return `${Number.isInteger(bucketKm) ? bucketKm.toFixed(0) : bucketKm.toFixed(1)} km`;
+}
+
+export function displayRangeBucketKm(distanceKm: number): number {
+  const normalizedDistanceKm = Number.isFinite(distanceKm) ? Math.max(0, distanceKm) : 0;
+  const kilometerFloor = Math.floor(normalizedDistanceKm);
+  const kilometerCeil = Math.ceil(normalizedDistanceKm);
+  const candidates = new Set<number>(DISPLAY_RANGE_BUCKETS_KM);
+
+  if (kilometerFloor >= 3) {
+    candidates.add(kilometerFloor);
+  }
+  if (kilometerCeil >= 3) {
+    candidates.add(kilometerCeil);
+  }
+
+  let closestBucketKm: number = DISPLAY_RANGE_BUCKETS_KM[0];
+  for (const candidate of candidates) {
+    const currentDelta = Math.abs(normalizedDistanceKm - closestBucketKm);
+    const candidateDelta = Math.abs(normalizedDistanceKm - candidate);
+    if (
+      candidateDelta < currentDelta - RANGE_BUCKET_TIE_EPSILON ||
+      (Math.abs(candidateDelta - currentDelta) <= RANGE_BUCKET_TIE_EPSILON &&
+        candidate > closestBucketKm)
+    ) {
+      closestBucketKm = candidate;
+    }
+  }
+
+  return closestBucketKm;
+}

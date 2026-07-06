@@ -1,4 +1,4 @@
 id;name;latitude;longitude;height_agl_m;range_km
-T001;Prague Ridge;50.0755;14.4378;12;25
-T002;North Valley;50,1180;14,4100;18;18,5
-T003;South Hill;49.9870;14.5210;8;12
+T1;Doktorka;50.71514;15.46342;10;1
+T2;cestaJablonec;50.70456;15.44693;10;1
+T3;Rokytnice;50.72209;15.46145;10;2
