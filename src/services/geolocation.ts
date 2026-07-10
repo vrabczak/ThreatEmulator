@@ -1,4 +1,3 @@
-import { calculateAgl } from '../domain/evaluation';
 import {
   deriveTrackFromFixes,
   resolveTrack,
@@ -68,10 +67,11 @@ export class GeolocationTracker {
     this.onState({
       latitude: position.coords.latitude,
       longitude: position.coords.longitude,
-      gpsAltitudeM: position.coords.altitude,
+      gpsEllipsoidAltitudeM: position.coords.altitude,
+      gpsAltitudeM: null,
       gpsAltitudeAccuracyM: position.coords.altitudeAccuracy,
       gpsAccuracyM: position.coords.accuracy,
-      aglM: calculateAgl(position.coords.altitude, null),
+      aglM: null,
       trackDegrees: resolvedTrack.trackDegrees,
       trackSource: resolvedTrack.trackSource,
       trackAgeMs: resolvedTrack.trackAgeMs,

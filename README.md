@@ -11,7 +11,7 @@ The app is built with TypeScript, Vite, Vitest, `geotiff`, `papaparse`, and `vit
 - Loads user-selected local threat CSV files.
 - Loads user-selected local WGS84 elevation GeoTIFF files.
 - Can remember a local GeoTIFF through a persistent file handle on compatible browsers.
-- Calculates aircraft height above ground from GPS altitude and terrain elevation.
+- Converts browser WGS84 ellipsoid altitude to EGM96 orthometric MSL altitude, then calculates height above ground from local terrain elevation.
 - Evaluates threats every 3 seconds while the emulator is active.
 - Prioritizes the closest active threat.
 - Shows aircraft position, GPS altitude, height above ground, precision, track, validation status, and evaluation results.
@@ -96,6 +96,8 @@ Validation rules:
 
 The GeoTIFF provides terrain elevation for aircraft AGL and line-of-sight checks.
 
+Browser altitude is converted from WGS84 ellipsoid height to orthometric MSL height with the bundled offline EGM96 15-minute geoid grid. Aircraft AGL is then calculated from the converted altitude and the current terrain sample. Calculated AGL below 15 m is reported as 50 ft. If a new aircraft terrain lookup fails after at least one successful lookup, the AGL display uses the last retrieved aircraft terrain elevation and marks the value as `(last terrain)`.
+
 Expected properties:
 
 - WGS84 coordinates.
@@ -103,7 +105,7 @@ Expected properties:
 - Coverage for the aircraft and all threats being evaluated.
 - NoData values that can be detected and handled.
 
-If terrain is unavailable or outside coverage, the app reports that state instead of producing a false active warning.
+Missing terrain along a threat line-of-sight still produces a terrain-unavailable result instead of a false active warning; the last-aircraft-terrain fallback applies only to the aircraft AGL display.
 
 ## Evaluation Model
 
@@ -114,6 +116,8 @@ For each valid threat, the emulator:
 3. Runs a flat-earth terrain line-of-sight check when the aircraft is inside range.
 4. Marks the threat active when line of sight is clear.
 5. Builds the primary warning from the closest active threat.
+
+GNSS fixes are published to threat evaluation atomically after their EGM96 conversion finishes. While a newer fix is being converted, the previous fully converted aircraft state remains available, so the 3-second evaluation does not skip LOS merely because conversion is in progress.
 
 V1 does not model earth curvature, atmospheric refraction, buildings, or a map display.
 

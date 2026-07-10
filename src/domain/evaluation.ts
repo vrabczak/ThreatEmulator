@@ -4,6 +4,7 @@ import type {
   AircraftState,
   LineOfSightResult,
   TerrainMetadata,
+  TerrainSample,
   TerrainService,
   Threat,
   ThreatEvaluationResult,
@@ -14,6 +15,9 @@ export interface ThreatEvaluationOptions {
   maxLosSampleSpacingM?: number;
   nowMs?: number;
 }
+
+export const MINIMUM_CALCULATED_AGL_M = 15;
+export const LOW_AGL_FALLBACK_M = 50 / 3.280839895;
 
 export async function evaluateThreats(
   threats: Threat[],
@@ -106,7 +110,15 @@ export function calculateAgl(gpsAltitudeM: number | null, terrainElevationM: num
     return null;
   }
 
-  return gpsAltitudeM - terrainElevationM;
+  const calculatedAglM = gpsAltitudeM - terrainElevationM;
+  return calculatedAglM < MINIMUM_CALCULATED_AGL_M ? LOW_AGL_FALLBACK_M : calculatedAglM;
+}
+
+export function resolveTerrainElevationM(
+  sample: TerrainSample,
+  lastRetrievedElevationM: number | null
+): number | null {
+  return sample.status === 'ok' ? sample.elevationM : lastRetrievedElevationM;
 }
 
 function resultFromLineOfSight(

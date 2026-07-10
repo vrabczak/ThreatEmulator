@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "egm96": "^0.0.1",
     "geotiff": "^3.0.0",
     "papaparse": "^5.5.3"
   },

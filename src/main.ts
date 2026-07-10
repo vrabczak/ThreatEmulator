@@ -1,6 +1,7 @@
 import { registerSW } from 'virtual:pwa-register';
 import { parseThreatCsvFile } from './domain/csv';
-import { calculateAgl, evaluateThreats } from './domain/evaluation';
+import { calculateAgl, evaluateThreats, resolveTerrainElevationM } from './domain/evaluation';
+import { Egm96GeoidModel } from './domain/geoid';
 import { formatThreatRange } from './domain/geo';
 import { buildPrimaryWarning } from './domain/warning';
 import { GeolocationTracker, type GeolocationStatus } from './services/geolocation';
@@ -26,6 +27,7 @@ const EVALUATION_INTERVAL_MS = 3000;
 registerSW({ immediate: true });
 
 const terrainService = new WorkerTerrainService();
+const geoidModel = new Egm96GeoidModel();
 const persistentTerrainSupported = supportsPersistentFilePicker();
 
 let csvResult: ThreatCsvResult | null = null;
@@ -33,6 +35,8 @@ let terrainMetadata: TerrainMetadata | null = null;
 let terrainLoadedFromPersistentHandle = false;
 let rememberedTerrainFileName: string | null = null;
 let aircraftState: AircraftState | null = null;
+let latestAircraftFixTimestampMs: number | null = null;
+let lastAircraftTerrainElevationM: number | null = null;
 let lastAircraftTerrainReason: string | null = null;
 let geolocationStatus: GeolocationStatus = 'idle';
 let geolocationMessage = 'GNSS watch starting.';
@@ -40,15 +44,19 @@ let appMessage = 'Load a threat CSV, import an elevation GeoTIFF, grant GNSS per
 let appMessageTone: 'normal' | 'warning' | 'error' = 'normal';
 let emulatorActive = false;
 let evaluationTimer: number | null = null;
+let countdownTimer: number | null = null;
+let highlightTimer: number | null = null;
+let nextEvaluationAtMs: number | null = null;
 let evaluationInFlight = false;
 let lastEvaluation: ThreatEvaluationSummary | null = null;
 
 const geolocationTracker = new GeolocationTracker(
   (state) => {
-    aircraftState = state;
-    lastAircraftTerrainReason = null;
+    latestAircraftFixTimestampMs = state.timestampMs;
+    // Keep the last fully converted state evaluable while this newer fix is converted to MSL.
+    aircraftState ??= state;
     render();
-    void refreshAircraftAgl(state);
+    void convertAircraftAltitudeToMsl(state);
   },
   (status, message) => {
     geolocationStatus = status;
@@ -70,8 +78,12 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <div id="emulatorState" class="status-pill">STOPPED</div>
     </header>
 
-    <section class="warning-band" aria-live="polite">
-      <div id="primaryWarning" class="warning-text">NO ACTIVE THREAT</div>
+    <section id="warningBand" class="warning-band">
+      <div id="primaryWarning" class="warning-text" aria-live="polite">NO ACTIVE THREAT</div>
+      <div class="evaluation-timing" aria-label="Threat calculation status">
+        <span id="evaluationPulse" class="evaluation-pulse" aria-hidden="true"></span>
+        <span id="evaluationCountdown">Updates stopped</span>
+      </div>
     </section>
 
     <section class="content">
@@ -109,7 +121,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         </div>
       </div>
 
-      <div class="panel">
+      <div id="evaluationPanel" class="panel">
         <div class="panel-header">Aircraft Status</div>
         <div class="panel-body">
           <div class="status-grid">
@@ -306,6 +318,11 @@ async function restoreRememberedTerrain(options: {
 async function loadTerrain(file: File, source: 'manual' | 'remembered' | 'restored'): Promise<void> {
   stopEmulator('Loading replacement terrain.');
   terrainMetadata = null;
+  lastAircraftTerrainElevationM = null;
+  lastAircraftTerrainReason = null;
+  if (aircraftState) {
+    aircraftState = { ...aircraftState, aglM: null };
+  }
   terrainLoadedFromPersistentHandle = source !== 'manual';
   lastEvaluation = null;
   setMessage(`Loading GeoTIFF metadata from ${file.name}.`, 'normal');
@@ -347,10 +364,13 @@ function startEmulator(): void {
 
   emulatorActive = true;
   setMessage('Emulator active. Threats evaluate every 3 seconds.', 'normal');
+  nextEvaluationAtMs = Date.now() + EVALUATION_INTERVAL_MS;
   void evaluateNow();
   evaluationTimer = window.setInterval(() => {
+    nextEvaluationAtMs = Date.now() + EVALUATION_INTERVAL_MS;
     void evaluateNow();
   }, EVALUATION_INTERVAL_MS);
+  countdownTimer = window.setInterval(updateEvaluationCountdown, 200);
   render();
 }
 
@@ -359,6 +379,11 @@ function stopEmulator(message: string): void {
     window.clearInterval(evaluationTimer);
     evaluationTimer = null;
   }
+  if (countdownTimer !== null) {
+    window.clearInterval(countdownTimer);
+    countdownTimer = null;
+  }
+  nextEvaluationAtMs = null;
   emulatorActive = false;
   terrainService.cancelPending();
   setMessage(message, 'normal');
@@ -379,8 +404,10 @@ async function evaluateNow(): Promise<void> {
 
   evaluationInFlight = true;
   render();
+  let evaluationCompleted = false;
   try {
     lastEvaluation = await evaluateThreats(csvResult!.threats, aircraftState, terrainService);
+    evaluationCompleted = true;
     const activeCount = lastEvaluation.results.filter((result) => result.state === 'active').length;
     setMessage(activeCount > 0 ? `${activeCount} active threat${activeCount === 1 ? '' : 's'} detected.` : 'No active threats detected.', activeCount > 0 ? 'warning' : 'normal');
   } catch (error) {
@@ -388,7 +415,48 @@ async function evaluateNow(): Promise<void> {
   } finally {
     evaluationInFlight = false;
     render();
+    if (evaluationCompleted) {
+      highlightNewEvaluation();
+    }
   }
+}
+
+async function convertAircraftAltitudeToMsl(state: AircraftState): Promise<void> {
+  if (state.gpsEllipsoidAltitudeM === null) {
+    return;
+  }
+
+  let gpsAltitudeMslM: number;
+  try {
+    gpsAltitudeMslM = await geoidModel.ellipsoidHeightToMslM(
+      state.gpsEllipsoidAltitudeM,
+      state.latitude,
+      state.longitude
+    );
+  } catch (error) {
+    if (latestAircraftFixTimestampMs === state.timestampMs && aircraftState?.gpsAltitudeM === null) {
+      lastAircraftTerrainReason =
+        error instanceof Error ? error.message : 'Unable to convert GPS altitude to MSL.';
+      render();
+    }
+    return;
+  }
+
+  if (latestAircraftFixTimestampMs !== state.timestampMs) {
+    return;
+  }
+
+  const convertedState: AircraftState = {
+    ...state,
+    gpsAltitudeM: gpsAltitudeMslM,
+    aglM: calculateAgl(gpsAltitudeMslM, lastAircraftTerrainElevationM)
+  };
+  aircraftState = convertedState;
+  lastAircraftTerrainReason = lastAircraftTerrainElevationM === null
+    ? null
+    : 'Using last retrieved terrain elevation while the current lookup completes.';
+  render();
+  await refreshAircraftAgl(convertedState);
 }
 
 async function refreshAircraftAgl(state: AircraftState): Promise<void> {
@@ -400,30 +468,29 @@ async function refreshAircraftAgl(state: AircraftState): Promise<void> {
   try {
     sample = await terrainService.sampleElevation(state.latitude, state.longitude);
   } catch (error) {
-    if (aircraftState?.timestampMs === state.timestampMs) {
-      lastAircraftTerrainReason =
-        error instanceof Error ? error.message : 'Unable to read aircraft terrain elevation.';
-      render();
-    }
-    return;
+    sample = {
+      status: 'terrain-unavailable',
+      reason: error instanceof Error ? error.message : 'Unable to read aircraft terrain elevation.'
+    };
   }
   if (aircraftState?.timestampMs !== state.timestampMs) {
     return;
   }
 
+  const terrainElevationM = resolveTerrainElevationM(sample, lastAircraftTerrainElevationM);
   if (sample.status === 'ok') {
-    aircraftState = {
-      ...state,
-      aglM: calculateAgl(state.gpsAltitudeM, sample.elevationM)
-    };
+    lastAircraftTerrainElevationM = sample.elevationM;
     lastAircraftTerrainReason = null;
+  } else if (lastAircraftTerrainElevationM !== null) {
+    lastAircraftTerrainReason = `${sample.reason} Using last retrieved terrain elevation.`;
   } else {
-    aircraftState = {
-      ...state,
-      aglM: null
-    };
     lastAircraftTerrainReason = sample.reason;
   }
+
+  aircraftState = {
+    ...state,
+    aglM: calculateAgl(state.gpsAltitudeM, terrainElevationM)
+  };
   render();
 }
 
@@ -449,6 +516,7 @@ function render(): void {
   getElement('primaryWarning').classList.toggle('active', Boolean(lastEvaluation?.primary));
   setText('emulatorState', emulatorActive ? 'ACTIVE' : 'STOPPED');
   getElement('emulatorState').classList.toggle('active', emulatorActive);
+  updateEvaluationCountdown();
 
   const messageElement = getElement('appMessage');
   messageElement.textContent = appMessage;
@@ -470,6 +538,41 @@ function render(): void {
 
   startButton.disabled = emulatorActive;
   stopButton.disabled = !emulatorActive;
+}
+
+function updateEvaluationCountdown(): void {
+  const countdown = getElement('evaluationCountdown');
+  const pulse = getElement('evaluationPulse');
+
+  if (!emulatorActive) {
+    countdown.textContent = 'Updates stopped';
+  } else if (evaluationInFlight) {
+    countdown.textContent = 'Calculating threats...';
+  } else {
+    const remainingMs = Math.max(0, (nextEvaluationAtMs ?? Date.now()) - Date.now());
+    countdown.textContent = `Next threat check in ${(remainingMs / 1000).toFixed(1)} s`;
+  }
+
+  pulse.classList.toggle('calculating', emulatorActive && evaluationInFlight);
+}
+
+function highlightNewEvaluation(): void {
+  const warningBand = getElement('warningBand');
+  const evaluationPanel = getElement('evaluationPanel');
+
+  if (highlightTimer !== null) {
+    window.clearTimeout(highlightTimer);
+  }
+  warningBand.classList.remove('evaluation-updated');
+  evaluationPanel.classList.remove('evaluation-updated');
+  void warningBand.offsetWidth;
+  warningBand.classList.add('evaluation-updated');
+  evaluationPanel.classList.add('evaluation-updated');
+  highlightTimer = window.setTimeout(() => {
+    warningBand.classList.remove('evaluation-updated');
+    evaluationPanel.classList.remove('evaluation-updated');
+    highlightTimer = null;
+  }, 900);
 }
 
 function renderCsvImportStatus(): string {
@@ -513,7 +616,8 @@ function renderTerrainImportStatus(): string {
 
 function renderAgl(): string {
   if (aircraftState?.aglM !== null && aircraftState?.aglM !== undefined) {
-    return `${metersToFeet(aircraftState.aglM)} ft`;
+    const fallback = lastAircraftTerrainReason ? ' (last terrain)' : '';
+    return `${metersToFeet(aircraftState.aglM)} ft${fallback}`;
   }
   return lastAircraftTerrainReason ? `-- (${lastAircraftTerrainReason})` : '--';
 }

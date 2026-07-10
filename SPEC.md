@@ -10,7 +10,7 @@ The application runs entirely in the browser, uses user-selected local files, an
 
 - Target device is iPad mini.
 - Aircraft position comes from the iPad's built-in GNSS sensor through browser geolocation.
-- Aircraft GPS altitude is used, and aircraft AGL is calculated from the loaded elevation model.
+- Browser GPS ellipsoid altitude is converted to EGM96 orthometric MSL altitude, and aircraft AGL is calculated from the loaded elevation model.
 - Aircraft track is used for clock-code calculation. Heading is not used.
 - Threat scenery is loaded from a local semicolon-delimited CSV file.
 - Elevation data is loaded from a local GeoTIFF file.
@@ -132,11 +132,14 @@ Required aircraft state:
 Derived aircraft state:
 
 - Terrain elevation at aircraft position from the GeoTIFF.
-- Aircraft AGL altitude calculated as aircraft GPS altitude minus terrain elevation.
+- Orthometric aircraft altitude calculated as WGS84 ellipsoid altitude minus EGM96 geoid height.
+- Aircraft AGL altitude calculated as orthometric aircraft altitude minus terrain elevation.
+- A calculated AGL below 15 meters is replaced with 50 feet.
+- If the current aircraft terrain sample is unavailable, reuse the last successfully retrieved aircraft terrain elevation. This fallback does not apply to line-of-sight terrain samples.
 
 Clock-code calculation uses GPS track only. Heading, compass bearing, and aircraft nose direction are not used.
 
-The emulator uses the latest available aircraft state every 3 seconds. GNSS update frequency is controlled by the browser and device; the evaluation interval does not guarantee a new GNSS fix every cycle.
+The emulator uses the latest fully converted aircraft state every 3 seconds. A new GNSS fix replaces the evaluable state only after its EGM96 conversion finishes; until then, the previous converted state remains available for LOS and threat evaluation. GNSS update frequency is controlled by the browser and device; the evaluation interval does not guarantee a new GNSS fix every cycle.
 
 ## Threat Evaluation
 
@@ -168,11 +171,13 @@ Algorithm:
 
 1. Get terrain elevation at the threat location.
 2. Threat sensor altitude is `threatTerrainMsl + height_agl_m`.
-3. Use aircraft GPS altitude as the aircraft altitude reference for LOS.
+3. Use the EGM96-converted orthometric aircraft altitude as the aircraft altitude reference for LOS.
 4. Sample points between threat and aircraft along the ground path.
 5. Interpolate the sight-line altitude between threat sensor altitude and aircraft altitude.
 6. Read terrain elevation at each sample point.
 7. Line of sight is blocked if terrain is at or above the sight line at any sample.
+
+GPS altitude accuracy is not added as a line-of-sight margin, and sight-line elevations are compared without integer rounding.
 
 Out of scope for V1:
 

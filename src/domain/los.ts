@@ -44,15 +44,6 @@ export function calculateTerrainSampleSpacingM(metadata: TerrainMetadata, latitu
     : DEFAULT_MAX_LOS_SAMPLE_SPACING_M;
 }
 
-export function calculateAltitudePrecisionMarginM(aircraft: AircraftState): number {
-  const altitudeAccuracyM = aircraft.gpsAltitudeAccuracyM;
-  if (altitudeAccuracyM === null || !Number.isFinite(altitudeAccuracyM) || altitudeAccuracyM <= 0) {
-    return 0;
-  }
-
-  return Math.ceil(altitudeAccuracyM);
-}
-
 export async function evaluateFlatEarthLineOfSight(
   aircraft: AircraftState,
   threat: Threat,
@@ -87,7 +78,6 @@ export async function evaluateFlatEarthLineOfSight(
   const steps = Math.max(1, Math.ceil(totalDistanceM / maxSpacingM));
   const bearing = initialBearingDegrees(threatLocation, aircraftLocation);
   const threatSensorAltitudeM = threatTerrain.elevationM + threat.heightAglM;
-  const altitudePrecisionMarginM = calculateAltitudePrecisionMarginM(aircraft);
   let sampleCount = 1;
 
   for (let index = 1; index < steps; index += 1) {
@@ -107,8 +97,7 @@ export async function evaluateFlatEarthLineOfSight(
 
     const sightLineElevationM =
       threatSensorAltitudeM + (aircraft.gpsAltitudeM - threatSensorAltitudeM) * ratio;
-    const blockingThresholdM = Math.ceil(sightLineElevationM) + altitudePrecisionMarginM;
-    if (sample.elevationM > blockingThresholdM) {
+    if (sample.elevationM >= sightLineElevationM) {
       return {
         status: 'blocked',
         sampleCount,

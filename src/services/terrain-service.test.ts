@@ -67,6 +67,7 @@ describe('WorkerTerrainService', () => {
     const aircraft = {
       latitude: 50,
       longitude: 14,
+      gpsEllipsoidAltitudeM: 500,
       gpsAltitudeM: 500,
       gpsAltitudeAccuracyM: null,
       gpsAccuracyM: null,

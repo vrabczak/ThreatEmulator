@@ -79,10 +79,39 @@ input {
 .warning-band {
   min-height: 9rem;
   display: grid;
+  gap: 0.65rem;
   align-items: center;
   padding: 1rem;
   background: #e5e7eb;
   border-bottom: 1px solid #cbd5e1;
+}
+
+.evaluation-timing {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  color: #475569;
+  font-size: 0.9rem;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+}
+
+.evaluation-pulse {
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 999px;
+  background: #94a3b8;
+}
+
+.evaluation-pulse.calculating {
+  background: #2563eb;
+  animation: calculating-pulse 0.8s ease-in-out infinite alternate;
+}
+
+.warning-band.evaluation-updated .warning-text,
+.panel.evaluation-updated {
+  animation: evaluation-updated 0.9s ease-out;
 }
 
 .warning-text {
@@ -369,6 +398,38 @@ th {
 .warn {
   color: #a16207;
   font-weight: 850;
+}
+
+@keyframes calculating-pulse {
+  to {
+    opacity: 0.35;
+    transform: scale(0.7);
+  }
+}
+
+@keyframes evaluation-updated {
+  0% {
+    border-color: #2563eb;
+    box-shadow: 0 0 0 4px rgb(37 99 235 / 28%);
+    background-color: #dbeafe;
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgb(37 99 235 / 0%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .evaluation-pulse.calculating {
+    animation: none;
+  }
+
+  .warning-band.evaluation-updated .warning-text,
+  .panel.evaluation-updated {
+    animation: none;
+    border-color: #2563eb;
+    box-shadow: 0 0 0 3px rgb(37 99 235 / 28%);
+    background-color: #eff6ff;
+  }
 }
 
 @media (max-width: 900px) {

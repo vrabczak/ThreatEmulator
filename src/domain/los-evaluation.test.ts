@@ -1,6 +1,5 @@
-import { calculateAgl, evaluateThreats } from './evaluation';
+import { calculateAgl, evaluateThreats, resolveTerrainElevationM } from './evaluation';
 import {
-  calculateAltitudePrecisionMarginM,
   calculateTerrainSampleSpacingM,
   evaluateFlatEarthLineOfSight,
   type TerrainSampler
@@ -18,6 +17,7 @@ import type {
 const aircraft: AircraftState = {
   latitude: 50,
   longitude: 14.02,
+  gpsEllipsoidAltitudeM: 500,
   gpsAltitudeM: 500,
   gpsAltitudeAccuracyM: 5,
   gpsAccuracyM: 8,
@@ -43,11 +43,6 @@ describe('line of sight', () => {
 
     expect(spacingM).toBeGreaterThan(55);
     expect(spacingM).toBeLessThan(56);
-  });
-
-  it('rounds altitude precision up for favourable LOS checks', () => {
-    expect(calculateAltitudePrecisionMarginM({ ...aircraft, gpsAltitudeAccuracyM: 4.2 })).toBe(5);
-    expect(calculateAltitudePrecisionMarginM({ ...aircraft, gpsAltitudeAccuracyM: null })).toBe(0);
   });
 
   it('returns clear when terrain is below the sight line', async () => {
@@ -98,28 +93,10 @@ describe('line of sight', () => {
     expect(result.status).toBe('blocked');
   });
 
-  it('returns clear when terrain is within rounded altitude precision', async () => {
+  it('ignores GPS altitude accuracy and blocks at the precise sight-line height', async () => {
     const sampler: TerrainSampler = async (_latitude, longitude) => {
       if (longitude > 14 && longitude < 14.02) {
-        return { status: 'ok', elevationM: 315 };
-      }
-      return { status: 'ok', elevationM: 100 };
-    };
-
-    const result = await evaluateFlatEarthLineOfSight(
-      { ...aircraft, gpsAltitudeAccuracyM: 4.2 },
-      closeThreat,
-      sampler,
-      { maxSampleSpacingM: 1000 }
-    );
-
-    expect(result.status).toBe('clear');
-  });
-
-  it('returns blocked when terrain exceeds rounded altitude precision', async () => {
-    const sampler: TerrainSampler = async (_latitude, longitude) => {
-      if (longitude > 14 && longitude < 14.02) {
-        return { status: 'ok', elevationM: 316 };
+        return { status: 'ok', elevationM: 310 };
       }
       return { status: 'ok', elevationM: 100 };
     };
@@ -150,6 +127,24 @@ describe('threat evaluation', () => {
   it('calculates AGL altitude', () => {
     expect(calculateAgl(600, 450)).toBe(150);
     expect(calculateAgl(null, 450)).toBeNull();
+    expect(calculateAgl(460, 450)).toBeCloseTo(15.24, 2);
+    expect(calculateAgl(400, 450)).toBeCloseTo(15.24, 2);
+  });
+
+  it('uses the last retrieved aircraft terrain elevation when a new sample is unavailable', () => {
+    expect(resolveTerrainElevationM({ status: 'ok', elevationM: 420 }, 400)).toBe(420);
+    expect(
+      resolveTerrainElevationM(
+        { status: 'terrain-unavailable', reason: 'outside coverage' },
+        400
+      )
+    ).toBe(400);
+    expect(
+      resolveTerrainElevationM(
+        { status: 'terrain-unavailable', reason: 'outside coverage' },
+        null
+      )
+    ).toBeNull();
   });
 
   it('prioritizes the closest active threat', async () => {

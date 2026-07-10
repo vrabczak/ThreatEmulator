@@ -39,6 +39,8 @@ export type TrackSource = 'browser' | 'derived' | 'stale' | 'unavailable';
 export interface AircraftState {
   latitude: number;
   longitude: number;
+  gpsEllipsoidAltitudeM: number | null;
+  /** EGM96 orthometric altitude used by AGL and line-of-sight calculations. */
   gpsAltitudeM: number | null;
   gpsAltitudeAccuracyM: number | null;
   gpsAccuracyM: number | null;

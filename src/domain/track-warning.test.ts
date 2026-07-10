@@ -32,6 +32,7 @@ describe('warning call', () => {
   const aircraft: AircraftState = {
     latitude: 50,
     longitude: 14,
+    gpsEllipsoidAltitudeM: 600,
     gpsAltitudeM: 600,
     gpsAltitudeAccuracyM: 5,
     gpsAccuracyM: 8,
