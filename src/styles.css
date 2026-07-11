@@ -203,7 +203,7 @@ input {
 
 .button-row {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 0.65rem;
 }
 
@@ -250,6 +250,12 @@ button.danger {
   color: #ffffff;
   border-color: #b91c1c;
   background: #b91c1c;
+}
+
+button.awake-active {
+  color: #ffffff;
+  border-color: #047857;
+  background: #047857;
 }
 
 button:disabled {

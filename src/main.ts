@@ -49,6 +49,8 @@ let highlightTimer: number | null = null;
 let nextEvaluationAtMs: number | null = null;
 let evaluationInFlight = false;
 let lastEvaluation: ThreatEvaluationSummary | null = null;
+let stayAwakeRequested = false;
+let wakeLock: WakeLockSentinel | null = null;
 
 const geolocationTracker = new GeolocationTracker(
   (state) => {
@@ -110,8 +112,8 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
               </div>
             </div>
             <div class="button-row">
-              <button id="startButton" class="primary" type="button">Start</button>
-              <button id="stopButton" class="danger" type="button">Stop</button>
+              <button id="startStopButton" class="primary" type="button">Start</button>
+              <button id="stayAwakeButton" type="button" aria-pressed="false">Stay awake</button>
             </div>
           </div>
 
@@ -175,10 +177,10 @@ const csvInput = getElement<HTMLInputElement>('csvInput');
 const terrainInput = getElement<HTMLInputElement>('terrainInput');
 const csvImportButton = getElement<HTMLButtonElement>('csvImportButton');
 const csvImportStatus = getElement<HTMLDivElement>('csvImportStatus');
-const startButton = getElement<HTMLButtonElement>('startButton');
-const stopButton = getElement<HTMLButtonElement>('stopButton');
+const startStopButton = getElement<HTMLButtonElement>('startStopButton');
 const terrainImportButton = getElement<HTMLButtonElement>('terrainImportButton');
 const terrainImportStatus = getElement<HTMLDivElement>('terrainImportStatus');
+const stayAwakeButton = getElement<HTMLButtonElement>('stayAwakeButton');
 
 csvInput.addEventListener('change', () => {
   const file = csvInput.files?.[0];
@@ -204,13 +206,61 @@ terrainImportButton.addEventListener('click', () => {
   void importTerrain();
 });
 
-startButton.addEventListener('click', () => {
-  startEmulator();
+startStopButton.addEventListener('click', () => {
+  if (emulatorActive) {
+    stopEmulator('Emulator stopped.');
+  } else {
+    startEmulator();
+  }
 });
 
-stopButton.addEventListener('click', () => {
-  stopEmulator('Emulator stopped.');
+stayAwakeButton.addEventListener('click', () => {
+  void toggleStayAwake();
 });
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && stayAwakeRequested && wakeLock === null) {
+    void acquireWakeLock();
+  }
+});
+
+async function toggleStayAwake(): Promise<void> {
+  if (stayAwakeRequested) {
+    stayAwakeRequested = false;
+    await wakeLock?.release();
+    wakeLock = null;
+    render();
+    return;
+  }
+
+  stayAwakeRequested = true;
+  await acquireWakeLock();
+}
+
+async function acquireWakeLock(): Promise<void> {
+  if (!('wakeLock' in navigator)) {
+    stayAwakeRequested = false;
+    setMessage('This browser does not support keeping the screen awake.', 'warning');
+    render();
+    return;
+  }
+
+  try {
+    const sentinel = await navigator.wakeLock.request('screen');
+    wakeLock = sentinel;
+    sentinel.addEventListener('release', () => {
+      if (wakeLock === sentinel) {
+        wakeLock = null;
+        render();
+      }
+    });
+  } catch (error) {
+    stayAwakeRequested = false;
+    const reason = error instanceof Error ? error.message : 'The wake lock request was rejected.';
+    setMessage(`Unable to keep the screen awake: ${reason}`, 'warning');
+  }
+  render();
+}
 
 async function loadCsv(file: File): Promise<void> {
   csvResult = await parseThreatCsvFile(file);
@@ -536,8 +586,12 @@ function render(): void {
   renderThreatRows();
   renderEvaluationRows();
 
-  startButton.disabled = emulatorActive;
-  stopButton.disabled = !emulatorActive;
+  startStopButton.textContent = emulatorActive ? 'Stop' : 'Start';
+  startStopButton.classList.toggle('primary', !emulatorActive);
+  startStopButton.classList.toggle('danger', emulatorActive);
+  stayAwakeButton.textContent = wakeLock ? 'Allow sleep' : 'Stay awake';
+  stayAwakeButton.setAttribute('aria-pressed', String(wakeLock !== null));
+  stayAwakeButton.classList.toggle('awake-active', wakeLock !== null);
 }
 
 function updateEvaluationCountdown(): void {
