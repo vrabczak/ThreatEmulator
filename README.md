@@ -61,7 +61,7 @@ npm run preview
 4. Grant browser geolocation permission when prompted.
 5. Wait for an aircraft position with GPS altitude.
 6. Start the emulator.
-7. Review the primary warning, aircraft status, threat preview, import validation output, and evaluation table.
+7. Expand the collapsed Aircraft Status and Threats panels as needed. The threat table is available before the emulator starts and shows each threat's ID/description, distance/range, and LOS/state.
 
 The repository includes `fixtures/sample-threats.csv` as a small CSV example.
 

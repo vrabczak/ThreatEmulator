@@ -123,8 +123,8 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         </div>
       </div>
 
-      <div id="evaluationPanel" class="panel">
-        <div class="panel-header">Aircraft Status</div>
+      <details class="panel collapsible-panel">
+        <summary class="panel-header">Aircraft Status</summary>
         <div class="panel-body">
           <div class="status-grid">
             <div class="metric"><span class="metric-label">Latitude</span><span id="latValue" class="metric-value">--</span></div>
@@ -134,40 +134,26 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
             <div class="metric"><span class="metric-label">GPS precision</span><span id="precisionValue" class="metric-value">--</span></div>
             <div class="metric"><span class="metric-label">Track</span><span id="trackValue" class="metric-value">--</span></div>
           </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Threat</th>
-                  <th>State</th>
-                  <th>Distance</th>
-                  <th>Reason</th>
-                </tr>
-              </thead>
-              <tbody id="evaluationRows"></tbody>
-            </table>
-          </div>
         </div>
-      </div>
+      </details>
 
-      <div class="panel">
-        <div class="panel-header">Threat Preview</div>
+      <details id="evaluationPanel" class="panel collapsible-panel threat-panel">
+        <summary class="panel-header">Threats</summary>
         <div class="panel-body">
           <div class="table-wrap">
-            <table>
+            <table class="threat-table">
               <thead>
                 <tr>
-                  <th>ID</th>
-                  <th>Name</th>
-                  <th>Position</th>
-                  <th>Range</th>
+                  <th><span>ID</span><span>Description</span></th>
+                  <th><span>Distance</span><span>Range</span></th>
+                  <th><span>LOS (VLOS or BLOS)</span><span>State</span></th>
                 </tr>
               </thead>
               <tbody id="threatRows"></tbody>
             </table>
           </div>
         </div>
-      </div>
+      </details>
 
     </section>
   </main>
@@ -584,7 +570,6 @@ function render(): void {
   setText('trackValue', renderTrack());
 
   renderThreatRows();
-  renderEvaluationRows();
 
   startStopButton.textContent = emulatorActive ? 'Stop' : 'Start';
   startStopButton.classList.toggle('primary', !emulatorActive);
@@ -688,47 +673,38 @@ function renderThreatRows(): void {
   const tbody = getElement<HTMLTableSectionElement>('threatRows');
   const threats = csvResult?.threats ?? [];
   if (threats.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4" class="muted">No valid threats loaded.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="3" class="muted">No valid threats loaded.</td></tr>';
     return;
   }
+
+  const evaluationsByThreatId = new Map(
+    (lastEvaluation?.results ?? []).map((result) => [result.threat.id, result])
+  );
 
   tbody.innerHTML = threats
-    .slice(0, 10)
-    .map(
-      (threat) => `
-        <tr>
-          <td>${escapeHtml(threat.id)}</td>
-          <td>${escapeHtml(threat.name)}</td>
-          <td>${threat.latitude.toFixed(5)}, ${threat.longitude.toFixed(5)}</td>
-          <td>${formatThreatRange(threat.rangeKm)}</td>
-        </tr>
-      `
-    )
-    .join('');
-}
+    .map((threat) => {
+      const result = evaluationsByThreatId.get(threat.id);
+      const lineOfSight =
+        result?.lineOfSight?.status === 'clear'
+          ? 'VLOS'
+          : result?.lineOfSight?.status === 'blocked'
+            ? 'BLOS'
+            : '--';
 
-function renderEvaluationRows(): void {
-  const tbody = getElement<HTMLTableSectionElement>('evaluationRows');
-  const results = lastEvaluation?.results ?? [];
-  if (results.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4" class="muted">No evaluation results.</td></tr>';
-    return;
-  }
-
-  tbody.innerHTML = results
-    .map((result) => {
-      const className =
-        result.state === 'active'
-          ? 'bad'
-          : result.state === 'terrain unavailable' || result.state === 'aircraft state unavailable'
-            ? 'warn'
-            : 'good';
       return `
         <tr>
-          <td>${escapeHtml(result.threat.name)}</td>
-          <td class="${className}">${result.state.toUpperCase()}</td>
-          <td>${result.distanceKm === null ? '--' : formatThreatRange(result.distanceKm)}</td>
-          <td>${escapeHtml(result.reason)}</td>
+          <td>
+            <span class="table-primary">${escapeHtml(threat.id)}</span>
+            <span class="table-secondary">${escapeHtml(threat.name)}</span>
+          </td>
+          <td>
+            <span class="table-primary">${result?.distanceKm === null || result?.distanceKm === undefined ? '--' : formatThreatRange(result.distanceKm)}</span>
+            <span class="table-secondary">${formatThreatRange(threat.rangeKm)}</span>
+          </td>
+          <td>
+            <span class="table-primary">${lineOfSight}</span>
+            <span class="table-secondary">${result ? result.state.toUpperCase() : 'NOT EVALUATED'}</span>
+          </td>
         </tr>
       `;
     })
