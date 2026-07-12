@@ -146,7 +146,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
                 <tr>
                   <th><span>ID</span><span>Description</span></th>
                   <th><span>Distance</span><span>Range</span></th>
-                  <th><span>LOS (VLOS or BLOS)</span><span>State</span></th>
+                  <th><span>LOS</span><span>State</span></th>
                 </tr>
               </thead>
               <tbody id="threatRows"></tbody>
@@ -684,12 +684,32 @@ function renderThreatRows(): void {
   tbody.innerHTML = threats
     .map((threat) => {
       const result = evaluationsByThreatId.get(threat.id);
+      const distanceClass =
+        result?.distanceKm === null || result?.distanceKm === undefined
+          ? ''
+          : result.distanceKm <= threat.rangeKm
+            ? 'good'
+            : 'bad';
       const lineOfSight =
         result?.lineOfSight?.status === 'clear'
           ? 'VLOS'
           : result?.lineOfSight?.status === 'blocked'
             ? 'BLOS'
             : '--';
+      const lineOfSightClass =
+        result?.lineOfSight?.status === 'clear'
+          ? 'good'
+          : result?.lineOfSight?.status === 'blocked'
+            ? 'bad'
+            : '';
+      const stateClass =
+        result?.state === 'active'
+          ? 'good'
+          : result?.state === 'inactive'
+            ? 'bad'
+            : result
+              ? 'warn'
+              : '';
 
       return `
         <tr>
@@ -698,12 +718,12 @@ function renderThreatRows(): void {
             <span class="table-secondary">${escapeHtml(threat.name)}</span>
           </td>
           <td>
-            <span class="table-primary">${result?.distanceKm === null || result?.distanceKm === undefined ? '--' : formatThreatRange(result.distanceKm)}</span>
+            <span class="table-primary ${distanceClass}">${result?.distanceKm === null || result?.distanceKm === undefined ? '--' : formatThreatRange(result.distanceKm)}</span>
             <span class="table-secondary">${formatThreatRange(threat.rangeKm)}</span>
           </td>
           <td>
-            <span class="table-primary">${lineOfSight}</span>
-            <span class="table-secondary">${result ? result.state.toUpperCase() : 'NOT EVALUATED'}</span>
+            <span class="table-primary ${lineOfSightClass}">${lineOfSight}</span>
+            <span class="table-secondary ${stateClass}">${result ? result.state.toUpperCase() : 'NOT EVALUATED'}</span>
           </td>
         </tr>
       `;

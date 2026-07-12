@@ -234,7 +234,7 @@ Required controls and displays:
 - Current evaluation status.
 - Large primary warning text.
 - Threat validation/status summary.
-- Separate collapsible aircraft status and threat table panels, collapsed by default. The threat table uses two-line ID/description, distance/range, and LOS/state columns. Clear LOS is displayed as VLOS and terrain-blocked LOS as BLOS; values not yet evaluated use placeholders.
+- Separate collapsible aircraft status and threat table panels, collapsed by default. The threat table uses two-line ID/description, distance/range, and LOS/state columns. Activation conditions are color-coded: in-range distance, VLOS, and active state are green; out-of-range distance, BLOS, and inactive state are red. Values not yet evaluated use neutral placeholders, while unavailable states are amber.
 
 The UI must be designed for iPad mini screen size and touch interaction.
 
