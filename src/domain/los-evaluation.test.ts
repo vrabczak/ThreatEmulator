@@ -121,6 +121,21 @@ describe('line of sight', () => {
 
     expect(result.status).toBe('terrain-unavailable');
   });
+
+  it('always returns clear for a magic threat without sampling terrain', async () => {
+    let sampleCount = 0;
+    const result = await evaluateFlatEarthLineOfSight(
+      { ...aircraft, gpsAltitudeM: null },
+      { ...closeThreat, heightAglM: null },
+      async () => {
+        sampleCount += 1;
+        return { status: 'terrain-unavailable', reason: 'outside coverage' };
+      }
+    );
+
+    expect(result).toEqual({ status: 'clear', sampleCount: 0 });
+    expect(sampleCount).toBe(0);
+  });
 });
 
 describe('threat evaluation', () => {
@@ -166,16 +181,85 @@ describe('threat evaluation', () => {
     expect(result.results[0].state).toBe('inactive');
   });
 
+  it('assumes clear LOS and only applies range when no elevation model is loaded', async () => {
+    const terrain = createMockTerrainService({
+      status: 'blocked',
+      sampleCount: 1,
+      blockedAt: {
+        latitude: 50,
+        longitude: 14.01,
+        terrainElevationM: 500,
+        sightLineElevationM: 400,
+        distanceFromThreatM: 500
+      }
+    });
+    terrain.evaluateLineOfSight = async () => {
+      throw new Error('LOS should not be evaluated without an elevation model.');
+    };
+    terrain.evaluateLineOfSightBatch = async () => {
+      throw new Error('LOS batch should not be evaluated without an elevation model.');
+    };
+
+    const outOfRangeThreat = { ...closeThreat, id: 'T002', rangeKm: 0.1 };
+    const result = await evaluateThreats([closeThreat, outOfRangeThreat], aircraft, terrain);
+
+    expect(result.results[0]).toMatchObject({
+      state: 'active',
+      lineOfSight: { status: 'clear', sampleCount: 0 }
+    });
+    expect(result.results[0].reason).toContain('line of sight is assumed clear');
+    expect(result.results[1]).toMatchObject({
+      state: 'inactive',
+      lineOfSight: { status: 'clear', sampleCount: 0 }
+    });
+    expect(result.primary?.threat.id).toBe('T001');
+  });
+
   it('does not create false warnings when terrain is unavailable', async () => {
     const terrain = createMockTerrainService({
       status: 'terrain-unavailable',
       sampleCount: 0,
       reason: 'outside coverage'
-    });
+    }, createTerrainMetadata());
     const result = await evaluateThreats([closeThreat], aircraft, terrain);
 
     expect(result.primary).toBeNull();
     expect(result.results[0].state).toBe('terrain unavailable');
+  });
+
+  it('activates an in-range magic threat without GPS altitude or terrain LOS', async () => {
+    let evaluatedThreatCount = 0;
+    const terrain = createMockTerrainService(
+      {
+        status: 'blocked',
+        sampleCount: 1,
+        blockedAt: {
+          latitude: 50,
+          longitude: 14.01,
+          terrainElevationM: 500,
+          sightLineElevationM: 400,
+          distanceFromThreatM: 500
+        }
+      },
+      createTerrainMetadata(),
+      undefined,
+      (threats) => {
+        evaluatedThreatCount += threats.length;
+      }
+    );
+
+    const result = await evaluateThreats(
+      [{ ...closeThreat, heightAglM: null }],
+      { ...aircraft, gpsAltitudeM: null },
+      terrain
+    );
+
+    expect(result.results[0]).toMatchObject({
+      state: 'active',
+      lineOfSight: { status: 'clear', sampleCount: 0 }
+    });
+    expect(result.results[0].reason).toContain('magic threat');
+    expect(evaluatedThreatCount).toBe(0);
   });
 
   it('uses GeoTIFF resolution as the default LOS sample spacing', async () => {
@@ -198,7 +282,8 @@ describe('threat evaluation', () => {
 function createMockTerrainService(
   lineOfSight: LineOfSightResult,
   metadata: TerrainMetadata | null = null,
-  onBatchOptions?: (options: LineOfSightOptions | undefined) => void
+  onBatchOptions?: (options: LineOfSightOptions | undefined) => void,
+  onBatchThreats?: (threats: Threat[]) => void
 ): TerrainService {
   return {
     async loadGeoTiff(): Promise<TerrainMetadata> {
@@ -219,6 +304,7 @@ function createMockTerrainService(
       options?: LineOfSightOptions
     ): Promise<Array<{ threatId: string; result: LineOfSightResult }>> {
       onBatchOptions?.(options);
+      onBatchThreats?.(threats);
       return threats.map((threat) => ({ threatId: threat.id, result: lineOfSight }));
     },
     cancelPending(): void {},

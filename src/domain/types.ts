@@ -2,10 +2,8 @@ export const MAX_CSV_FILE_SIZE_BYTES = 1024 * 1024;
 
 export const REQUIRED_THREAT_COLUMNS = [
   'id',
-  'name',
   'latitude',
   'longitude',
-  'height_agl_m',
   'range_km'
 ] as const;
 
@@ -16,7 +14,8 @@ export interface Threat {
   name: string;
   latitude: number;
   longitude: number;
-  heightAglM: number;
+  /** Null makes this a magic threat whose line of sight is always clear. */
+  heightAglM: number | null;
   rangeKm: number;
 }
 

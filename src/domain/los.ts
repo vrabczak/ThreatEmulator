@@ -50,6 +50,10 @@ export async function evaluateFlatEarthLineOfSight(
   sampler: TerrainSampler,
   options: LineOfSightOptions = {}
 ): Promise<LineOfSightResult> {
+  if (threat.heightAglM === null) {
+    return { status: 'clear', sampleCount: 0 };
+  }
+
   if (aircraft.gpsAltitudeM === null) {
     return {
       status: 'terrain-unavailable',

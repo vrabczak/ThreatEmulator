@@ -223,6 +223,22 @@ input {
   background: #f8fafc;
 }
 
+.field input[type="text"] {
+  width: 100%;
+  min-height: 2.75rem;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid #9ca3af;
+  border-radius: 6px;
+  color: #111827;
+  background: #ffffff;
+}
+
+.field input[type="text"]:focus-visible {
+  border-color: #2563eb;
+  outline: 2px solid rgb(37 99 235 / 25%);
+  outline-offset: 1px;
+}
+
 .field input[type="file"].file-input-fallback {
   position: absolute;
   width: 1px;
@@ -400,6 +416,119 @@ button:disabled {
   overflow-x: auto;
 }
 
+.threat-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.threat-toolbar-copy {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.threat-toolbar-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.65rem;
+}
+
+button.compact-button {
+  min-height: 2.6rem;
+  flex: 0 0 auto;
+}
+
+.threat-editor {
+  display: grid;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  background: #eff6ff;
+}
+
+.editor-heading h2,
+.editor-heading p {
+  margin: 0;
+}
+
+.editor-heading h2 {
+  font-size: 1.1rem;
+}
+
+.editor-heading p {
+  margin-top: 0.25rem;
+}
+
+.editor-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+}
+
+.position-fieldset {
+  display: grid;
+  gap: 0.8rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0.8rem;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  background: #ffffff;
+}
+
+.position-fieldset legend {
+  padding: 0 0.3rem;
+  font-weight: 800;
+}
+
+.position-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem 1.25rem;
+}
+
+.position-options label {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2rem;
+  font-weight: 700;
+}
+
+.position-options input {
+  width: 1.15rem;
+  height: 1.15rem;
+}
+
+.field-hint {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.full-width-field {
+  grid-column: 1 / -1;
+}
+
+.editor-errors {
+  padding: 0.7rem;
+  border-left: 4px solid #dc2626;
+  background: #fee2e2;
+  color: #7f1d1d;
+  font-weight: 700;
+}
+
+.editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.65rem;
+}
+
+.editor-actions button {
+  min-width: 8rem;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;
@@ -434,6 +563,23 @@ th {
 .table-primary,
 .table-secondary {
   font-weight: 750;
+}
+
+.table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+button.table-action {
+  min-height: 2.35rem;
+  padding: 0.4rem 0.65rem;
+  font-size: 0.85rem;
+}
+
+button.delete-action {
+  color: #991b1b;
+  border-color: #fca5a5;
 }
 
 .muted {
@@ -513,7 +659,23 @@ th {
   }
 
   .button-row,
-  .status-grid {
+  .status-grid,
+  .editor-grid {
     grid-template-columns: 1fr;
+  }
+
+  .threat-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .threat-toolbar-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .editor-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
   }
 }

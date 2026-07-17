@@ -1,8 +1,9 @@
 import { registerSW } from 'virtual:pwa-register';
-import { parseThreatCsvFile } from './domain/csv';
+import { parseThreatCsvFile, serializeThreatCsv } from './domain/csv';
 import { calculateAgl, evaluateThreats, resolveTerrainElevationM } from './domain/evaluation';
 import { Egm96GeoidModel } from './domain/geoid';
 import { formatThreatRange } from './domain/geo';
+import { buildThreatFromEditor, type ThreatPositionMode } from './domain/threat-editor';
 import { buildPrimaryWarning } from './domain/warning';
 import { GeolocationTracker, type GeolocationStatus } from './services/geolocation';
 import {
@@ -16,6 +17,7 @@ import type {
   AircraftState,
   TerrainMetadata,
   TerrainSample,
+  Threat,
   ThreatCsvResult,
   ThreatEvaluationSummary
 } from './domain/types';
@@ -31,6 +33,10 @@ const geoidModel = new Egm96GeoidModel();
 const persistentTerrainSupported = supportsPersistentFilePicker();
 
 let csvResult: ThreatCsvResult | null = null;
+let threats: Threat[] = [];
+let threatsModified = false;
+let threatRevision = 0;
+let editingThreatIndex: number | null = null;
 let terrainMetadata: TerrainMetadata | null = null;
 let terrainLoadedFromPersistentHandle = false;
 let rememberedTerrainFileName: string | null = null;
@@ -40,7 +46,7 @@ let lastAircraftTerrainElevationM: number | null = null;
 let lastAircraftTerrainReason: string | null = null;
 let geolocationStatus: GeolocationStatus = 'idle';
 let geolocationMessage = 'GNSS watch starting.';
-let appMessage = 'Load a threat CSV, import an elevation GeoTIFF, grant GNSS permission, then start the emulator.';
+let appMessage = 'Import threats from CSV or add them manually, optionally import an elevation GeoTIFF, grant GNSS permission, then start the emulator.';
 let appMessageTone: 'normal' | 'warning' | 'error' = 'normal';
 let emulatorActive = false;
 let evaluationTimer: number | null = null;
@@ -140,6 +146,83 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
       <details id="evaluationPanel" class="panel collapsible-panel threat-panel">
         <summary class="panel-header">Threats</summary>
         <div class="panel-body">
+          <div class="threat-toolbar">
+            <div class="threat-toolbar-copy">
+              <strong>Threat list</strong>
+              <span class="muted">Import a CSV or manage threats here.</span>
+            </div>
+            <div class="threat-toolbar-actions">
+              <button id="exportThreatsButton" class="compact-button" type="button" hidden>Export CSV</button>
+              <button id="addThreatButton" class="primary compact-button" type="button">Add threat</button>
+            </div>
+          </div>
+
+          <form id="threatEditor" class="threat-editor" hidden novalidate>
+            <div class="editor-heading">
+              <div>
+                <h2 id="threatEditorTitle">Add threat</h2>
+                <p class="muted">Enter WGS84 or MGRS coordinates, or place the threat from the latest aircraft position.</p>
+              </div>
+            </div>
+
+            <div class="editor-grid">
+              <label class="field" for="threatId">ID
+                <input id="threatId" name="id" type="text" autocomplete="off" required />
+              </label>
+              <label class="field" for="threatName">Description
+                <input id="threatName" name="name" type="text" autocomplete="off" placeholder="Optional" />
+              </label>
+              <label class="field" for="threatHeightAglM">Height AGL (m, optional)
+                <input id="threatHeightAglM" name="heightAglM" type="text" inputmode="decimal" />
+                <span class="field-hint muted">Leave blank for a magic threat that always has clear line of sight.</span>
+              </label>
+              <label class="field" for="threatRangeKm">Effective range (km)
+                <input id="threatRangeKm" name="rangeKm" type="text" inputmode="decimal" required />
+              </label>
+            </div>
+
+            <fieldset class="position-fieldset">
+              <legend>Position</legend>
+              <div class="position-options">
+                <label><input type="radio" name="positionMode" value="coordinates" checked /> Coordinates</label>
+                <label><input type="radio" name="positionMode" value="mgrs" /> MGRS</label>
+                <label><input type="radio" name="positionMode" value="relative" /> Relative to aircraft</label>
+              </div>
+
+              <div id="coordinatePositionFields" class="editor-grid position-fields">
+                <label class="field" for="threatLatitude">Latitude
+                  <input id="threatLatitude" name="latitude" type="text" inputmode="decimal" placeholder="50.0755" />
+                </label>
+                <label class="field" for="threatLongitude">Longitude
+                  <input id="threatLongitude" name="longitude" type="text" inputmode="decimal" placeholder="14.4378" />
+                </label>
+              </div>
+
+              <div id="mgrsPositionFields" class="editor-grid position-fields" hidden>
+                <label class="field full-width-field" for="threatMgrs">MGRS coordinate
+                  <input id="threatMgrs" name="mgrs" type="text" autocomplete="off" autocapitalize="characters" placeholder="33U VR 59772 47176" />
+                  <span class="muted">Spaces are optional. Precision determines the center point used for the threat.</span>
+                </label>
+              </div>
+
+              <div id="relativePositionFields" class="editor-grid position-fields" hidden>
+                <label class="field" for="threatBearing">True bearing from aircraft (deg)
+                  <input id="threatBearing" name="bearingDegrees" type="text" inputmode="decimal" placeholder="0-360" />
+                </label>
+                <label class="field" for="threatDistanceKm">Distance from aircraft (km)
+                  <input id="threatDistanceKm" name="distanceKm" type="text" inputmode="decimal" />
+                </label>
+                <p id="relativePositionHint" class="field-hint muted"></p>
+              </div>
+            </fieldset>
+
+            <div id="threatEditorErrors" class="editor-errors" role="alert" hidden></div>
+            <div class="editor-actions">
+              <button id="cancelThreatButton" type="button">Cancel</button>
+              <button class="primary" type="submit">Save threat</button>
+            </div>
+          </form>
+
           <div class="table-wrap">
             <table class="threat-table">
               <thead>
@@ -147,6 +230,7 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
                   <th><span>ID</span><span>Description</span></th>
                   <th><span>Distance</span><span>Range</span></th>
                   <th><span>LOS</span><span>State</span></th>
+                  <th>Actions</th>
                 </tr>
               </thead>
               <tbody id="threatRows"></tbody>
@@ -167,6 +251,11 @@ const startStopButton = getElement<HTMLButtonElement>('startStopButton');
 const terrainImportButton = getElement<HTMLButtonElement>('terrainImportButton');
 const terrainImportStatus = getElement<HTMLDivElement>('terrainImportStatus');
 const stayAwakeButton = getElement<HTMLButtonElement>('stayAwakeButton');
+const addThreatButton = getElement<HTMLButtonElement>('addThreatButton');
+const exportThreatsButton = getElement<HTMLButtonElement>('exportThreatsButton');
+const threatEditor = getElement<HTMLFormElement>('threatEditor');
+const cancelThreatButton = getElement<HTMLButtonElement>('cancelThreatButton');
+const threatRows = getElement<HTMLTableSectionElement>('threatRows');
 
 csvInput.addEventListener('change', () => {
   const file = csvInput.files?.[0];
@@ -204,11 +293,204 @@ stayAwakeButton.addEventListener('click', () => {
   void toggleStayAwake();
 });
 
+addThreatButton.addEventListener('click', () => {
+  openThreatEditor();
+});
+
+exportThreatsButton.addEventListener('click', () => {
+  exportThreats();
+});
+
+cancelThreatButton.addEventListener('click', () => {
+  closeThreatEditor();
+});
+
+threatEditor.addEventListener('change', (event) => {
+  const input = event.target;
+  if (input instanceof HTMLInputElement && input.name === 'positionMode') {
+    updatePositionModeFields();
+  }
+});
+
+threatEditor.addEventListener('submit', (event) => {
+  event.preventDefault();
+  saveThreatEditor();
+});
+
+threatRows.addEventListener('click', (event) => {
+  const button = (event.target as HTMLElement).closest<HTMLButtonElement>('button[data-threat-action]');
+  if (!button) {
+    return;
+  }
+  const index = Number(button.dataset.threatIndex);
+  if (!Number.isInteger(index) || !threats[index]) {
+    return;
+  }
+  if (button.dataset.threatAction === 'edit') {
+    openThreatEditor(index);
+  } else if (button.dataset.threatAction === 'delete') {
+    deleteThreat(index);
+  }
+});
+
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState === 'visible' && stayAwakeRequested && wakeLock === null) {
     void acquireWakeLock();
   }
 });
+
+function openThreatEditor(index: number | null = null): void {
+  const threat = index === null ? null : threats[index];
+  if (index !== null && !threat) {
+    return;
+  }
+
+  editingThreatIndex = index;
+  threatEditor.reset();
+  setInputValue('threatId', threat?.id ?? nextThreatId());
+  setInputValue('threatName', threat?.name ?? '');
+  setInputValue(
+    'threatHeightAglM',
+    threat?.heightAglM === null || !threat ? '' : String(threat.heightAglM)
+  );
+  setInputValue('threatRangeKm', threat ? String(threat.rangeKm) : '');
+  setInputValue('threatLatitude', threat ? String(threat.latitude) : '');
+  setInputValue('threatLongitude', threat ? String(threat.longitude) : '');
+  setInputValue('threatMgrs', '');
+  setInputValue('threatBearing', '');
+  setInputValue('threatDistanceKm', '');
+  getElement('threatEditorTitle').textContent = threat ? `Edit ${threat.id}` : 'Add threat';
+  getElement('threatEditorErrors').hidden = true;
+  threatEditor.hidden = false;
+  getElement<HTMLDetailsElement>('evaluationPanel').open = true;
+  updatePositionModeFields();
+  getElement<HTMLInputElement>('threatId').focus();
+}
+
+function exportThreats(): void {
+  if (threats.length === 0) {
+    return;
+  }
+
+  try {
+    const csv = serializeThreatCsv(threats);
+    const blob = new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `threats-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.hidden = true;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 0);
+    setMessage(`${threats.length} threat${threats.length === 1 ? '' : 's'} exported to CSV.`, 'normal');
+  } catch (error) {
+    setMessage(error instanceof Error ? error.message : 'Unable to export threats.', 'error');
+  }
+  render();
+}
+
+function closeThreatEditor(): void {
+  editingThreatIndex = null;
+  threatEditor.hidden = true;
+  getElement('threatEditorErrors').hidden = true;
+}
+
+function updatePositionModeFields(): void {
+  const positionMode = selectedThreatPositionMode();
+  getElement('coordinatePositionFields').hidden = positionMode !== 'coordinates';
+  getElement('mgrsPositionFields').hidden = positionMode !== 'mgrs';
+  getElement('relativePositionFields').hidden = positionMode !== 'relative';
+  getElement('relativePositionHint').textContent = aircraftState
+    ? `Aircraft reference: ${aircraftState.latitude.toFixed(6)}, ${aircraftState.longitude.toFixed(6)}`
+    : 'Waiting for an aircraft GNSS position.';
+}
+
+function saveThreatEditor(): void {
+  const result = buildThreatFromEditor(
+    {
+      id: inputValue('threatId'),
+      name: inputValue('threatName'),
+      heightAglM: inputValue('threatHeightAglM'),
+      rangeKm: inputValue('threatRangeKm'),
+      positionMode: selectedThreatPositionMode(),
+      latitude: inputValue('threatLatitude'),
+      longitude: inputValue('threatLongitude'),
+      mgrs: inputValue('threatMgrs'),
+      bearingDegrees: inputValue('threatBearing'),
+      distanceKm: inputValue('threatDistanceKm')
+    },
+    aircraftState,
+    threats.filter((_, index) => index !== editingThreatIndex).map((threat) => threat.id)
+  );
+
+  if (!('threat' in result)) {
+    const errors = getElement('threatEditorErrors');
+    errors.textContent = result.errors.join(' ');
+    errors.hidden = false;
+    return;
+  }
+
+  const previous = editingThreatIndex === null ? null : threats[editingThreatIndex];
+  if (editingThreatIndex === null) {
+    threats = [...threats, result.threat];
+  } else {
+    threats = threats.map((threat, index) => index === editingThreatIndex ? result.threat : threat);
+  }
+  closeThreatEditor();
+  commitThreatChange(previous ? `Threat ${previous.id} updated.` : `Threat ${result.threat.id} added.`);
+}
+
+function deleteThreat(index: number): void {
+  const threat = threats[index];
+  const description = threat.name ? ` (${threat.name})` : '';
+  if (!window.confirm(`Delete threat ${threat.id}${description}?`)) {
+    return;
+  }
+  threats = threats.filter((_, threatIndex) => threatIndex !== index);
+  closeThreatEditor();
+  commitThreatChange(`Threat ${threat.id} deleted.`);
+}
+
+function commitThreatChange(message: string): void {
+  threatsModified = true;
+  threatRevision += 1;
+  lastEvaluation = null;
+
+  if (emulatorActive && threats.length === 0) {
+    stopEmulator(`${message} Emulator stopped because no threats remain.`);
+    return;
+  }
+
+  setMessage(message, 'normal');
+  render();
+  if (emulatorActive) {
+    void evaluateNow();
+  }
+}
+
+function selectedThreatPositionMode(): ThreatPositionMode {
+  const value = threatEditor.querySelector<HTMLInputElement>('input[name="positionMode"]:checked')?.value;
+  return value === 'mgrs' || value === 'relative' ? value : 'coordinates';
+}
+
+function inputValue(id: string): string {
+  return getElement<HTMLInputElement>(id).value;
+}
+
+function setInputValue(id: string, value: string): void {
+  getElement<HTMLInputElement>(id).value = value;
+}
+
+function nextThreatId(): string {
+  const ids = new Set(threats.map((threat) => threat.id));
+  let number = 1;
+  while (ids.has(`T${String(number).padStart(3, '0')}`)) {
+    number += 1;
+  }
+  return `T${String(number).padStart(3, '0')}`;
+}
 
 async function toggleStayAwake(): Promise<void> {
   if (stayAwakeRequested) {
@@ -249,8 +531,17 @@ async function acquireWakeLock(): Promise<void> {
 }
 
 async function loadCsv(file: File): Promise<void> {
+  if (threatsModified && threats.length > 0 && !window.confirm('Replace the locally edited threat list with this CSV?')) {
+    csvInput.value = '';
+    return;
+  }
+
   csvResult = await parseThreatCsvFile(file);
+  threats = [...csvResult.threats];
+  threatsModified = false;
+  threatRevision += 1;
   lastEvaluation = null;
+  closeThreatEditor();
 
   if (csvResult.errors.length > 0) {
     setMessage(csvResult.errors.join(' '), 'error');
@@ -260,6 +551,15 @@ async function loadCsv(file: File): Promise<void> {
     setMessage(`${csvResult.threats.length} valid threats loaded from ${file.name}.`, 'normal');
   }
   render();
+  if (emulatorActive && threats.length === 0) {
+    const loadMessage = appMessage;
+    const loadTone = appMessageTone;
+    stopEmulator('Emulator stopped because no threats remain.');
+    setMessage(`${loadMessage} Emulator stopped because no threats remain.`, loadTone);
+    render();
+  } else if (emulatorActive) {
+    void evaluateNow();
+  }
 }
 
 async function loadManualTerrain(file: File): Promise<void> {
@@ -439,20 +739,39 @@ async function evaluateNow(): Promise<void> {
   }
 
   evaluationInFlight = true;
+  const evaluatedRevision = threatRevision;
   render();
   let evaluationCompleted = false;
   try {
-    lastEvaluation = await evaluateThreats(csvResult!.threats, aircraftState, terrainService);
+    const evaluation = await evaluateThreats([...threats], aircraftState, terrainService);
+    if (evaluatedRevision !== threatRevision) {
+      return;
+    }
+    lastEvaluation = evaluation;
     evaluationCompleted = true;
     const activeCount = lastEvaluation.results.filter((result) => result.state === 'active').length;
-    setMessage(activeCount > 0 ? `${activeCount} active threat${activeCount === 1 ? '' : 's'} detected.` : 'No active threats detected.', activeCount > 0 ? 'warning' : 'normal');
+    const evaluationMessage = activeCount > 0
+      ? `${activeCount} active threat${activeCount === 1 ? '' : 's'} detected.`
+      : 'No active threats detected.';
+    const terrainMessage = terrainMetadata
+      ? ''
+      : ' No elevation model is loaded; line of sight is assumed clear.';
+    setMessage(
+      `${evaluationMessage}${terrainMessage}`,
+      activeCount > 0 || !terrainMetadata ? 'warning' : 'normal'
+    );
   } catch (error) {
-    setMessage(error instanceof Error ? error.message : 'Threat evaluation failed.', 'error');
+    if (evaluatedRevision === threatRevision) {
+      setMessage(error instanceof Error ? error.message : 'Threat evaluation failed.', 'error');
+    }
   } finally {
     evaluationInFlight = false;
     render();
     if (evaluationCompleted) {
       highlightNewEvaluation();
+    }
+    if (evaluatedRevision !== threatRevision && emulatorActive && threats.length > 0) {
+      void evaluateNow();
     }
   }
 }
@@ -531,16 +850,13 @@ async function refreshAircraftAgl(state: AircraftState): Promise<void> {
 }
 
 function getReadinessError(): string | null {
-  if (!csvResult || csvResult.threats.length === 0) {
-    return 'Load a valid threat CSV before activating the emulator.';
-  }
-  if (!terrainMetadata) {
-    return 'Load a valid elevation GeoTIFF before activating the emulator.';
+  if (threats.length === 0) {
+    return 'Import a valid threat CSV or add a threat before activating the emulator.';
   }
   if (!aircraftState) {
     return 'Grant GNSS permission and wait for an aircraft position before activating the emulator.';
   }
-  if (aircraftState.gpsAltitudeM === null) {
+  if (aircraftState.gpsAltitudeM === null && threats.every((threat) => threat.heightAglM !== null)) {
     return 'Aircraft GPS altitude is unavailable.';
   }
   return null;
@@ -570,6 +886,10 @@ function render(): void {
   setText('trackValue', renderTrack());
 
   renderThreatRows();
+  exportThreatsButton.hidden = threats.length === 0;
+  if (!threatEditor.hidden) {
+    updatePositionModeFields();
+  }
 
   startStopButton.textContent = emulatorActive ? 'Stop' : 'Start';
   startStopButton.classList.toggle('primary', !emulatorActive);
@@ -619,10 +939,16 @@ function renderCsvImportStatus(): string {
 
   if (!csvResult) {
     rows.push(`<div class="summary-row"><span>CSV</span><strong class="muted">${escapeHtml(csvInput.files?.[0]?.name ?? 'No file selected')}</strong></div>`);
+    if (threats.length > 0) {
+      rows.push(`<div class="summary-row"><span>Manual threats</span><strong>${threats.length}</strong></div>`);
+    }
     return rows.join('');
   }
 
   rows.push(`<div class="summary-row"><span>CSV file</span><strong>${escapeHtml(csvResult.fileName)}</strong></div>`);
+  if (threatsModified) {
+    rows.push('<div class="summary-row"><span>Threat list</span><strong class="warn">Edited locally</strong></div>');
+  }
   for (const error of csvResult.errors) {
     rows.push(`<div class="summary-row"><span>File error</span><strong class="bad">${escapeHtml(error)}</strong></div>`);
   }
@@ -637,7 +963,8 @@ function renderTerrainImportStatus(): string {
   const rows: string[] = [];
 
   if (!terrainMetadata) {
-    rows.push(`<div class="summary-row"><span>GeoTIFF</span><strong class="muted">${escapeHtml(terrainInput.files?.[0]?.name ?? 'No file selected')}</strong></div>`);
+    const terrainStatus = terrainInput.files?.[0]?.name ?? 'Not loaded - LOS assumed clear';
+    rows.push(`<div class="summary-row"><span>GeoTIFF</span><strong class="muted">${escapeHtml(terrainStatus)}</strong></div>`);
   } else {
     rows.push(`<div class="summary-row"><span>GeoTIFF file</span><strong>${escapeHtml(terrainMetadata.fileName)}</strong></div>`);
     rows.push(`<div class="summary-row"><span>Coverage</span><strong>${terrainMetadata.bbox.map((value) => value.toFixed(4)).join(', ')}</strong></div>`);
@@ -671,9 +998,8 @@ function renderTrack(): string {
 
 function renderThreatRows(): void {
   const tbody = getElement<HTMLTableSectionElement>('threatRows');
-  const threats = csvResult?.threats ?? [];
   if (threats.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="3" class="muted">No valid threats loaded.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="4" class="muted">No threats yet. Import a CSV or add one manually.</td></tr>';
     return;
   }
 
@@ -682,7 +1008,7 @@ function renderThreatRows(): void {
   );
 
   tbody.innerHTML = threats
-    .map((threat) => {
+    .map((threat, index) => {
       const result = evaluationsByThreatId.get(threat.id);
       const distanceClass =
         result?.distanceKm === null || result?.distanceKm === undefined
@@ -691,13 +1017,15 @@ function renderThreatRows(): void {
             ? 'good'
             : 'bad';
       const lineOfSight =
-        result?.lineOfSight?.status === 'clear'
-          ? 'VLOS'
-          : result?.lineOfSight?.status === 'blocked'
-            ? 'BLOS'
-            : '--';
+        threat.heightAglM === null
+          ? 'ALWAYS'
+          : result?.lineOfSight?.status === 'clear'
+            ? 'VLOS'
+            : result?.lineOfSight?.status === 'blocked'
+              ? 'BLOS'
+              : '--';
       const lineOfSightClass =
-        result?.lineOfSight?.status === 'clear'
+        threat.heightAglM === null || result?.lineOfSight?.status === 'clear'
           ? 'good'
           : result?.lineOfSight?.status === 'blocked'
             ? 'bad'
@@ -715,7 +1043,7 @@ function renderThreatRows(): void {
         <tr>
           <td>
             <span class="table-primary">${escapeHtml(threat.id)}</span>
-            <span class="table-secondary">${escapeHtml(threat.name)}</span>
+            <span class="table-secondary${threat.name ? '' : ' muted'}">${escapeHtml(threat.name || 'No description')}</span>
           </td>
           <td>
             <span class="table-primary ${distanceClass}">${result?.distanceKm === null || result?.distanceKm === undefined ? '--' : formatThreatRange(result.distanceKm)}</span>
@@ -724,6 +1052,12 @@ function renderThreatRows(): void {
           <td>
             <span class="table-primary ${lineOfSightClass}">${lineOfSight}</span>
             <span class="table-secondary ${stateClass}">${result ? result.state.toUpperCase() : 'NOT EVALUATED'}</span>
+          </td>
+          <td>
+            <div class="table-actions">
+              <button type="button" class="table-action" data-threat-action="edit" data-threat-index="${index}" aria-label="Edit threat ${escapeHtml(threat.id)}">Edit</button>
+              <button type="button" class="table-action delete-action" data-threat-action="delete" data-threat-index="${index}" aria-label="Delete threat ${escapeHtml(threat.id)}">Delete</button>
+            </div>
           </td>
         </tr>
       `;

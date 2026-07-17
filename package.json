@@ -14,6 +14,7 @@
   "dependencies": {
     "egm96": "^0.0.1",
     "geotiff": "^3.0.0",
+    "mgrs": "^2.2.0",
     "papaparse": "^5.5.3"
   },
   "devDependencies": {

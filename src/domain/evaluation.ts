@@ -26,16 +26,19 @@ export async function evaluateThreats(
   options: ThreatEvaluationOptions = {}
 ): Promise<ThreatEvaluationSummary> {
   const evaluatedAtMs = options.nowMs ?? Date.now();
+  const terrainMetadata = terrain.getMetadata();
   const results: Array<ThreatEvaluationResult | null> = [];
   const pendingLos: Array<{ index: number; threat: Threat; distanceKm: number }> = [];
 
   for (const [index, threat] of threats.entries()) {
-    if (!aircraft || aircraft.gpsAltitudeM === null) {
+    if (!aircraft || (aircraft.gpsAltitudeM === null && threat.heightAglM !== null)) {
       results[index] = {
         threat,
         state: 'aircraft state unavailable',
         distanceKm: null,
-        reason: 'Aircraft GNSS position or GPS altitude is unavailable.'
+        reason: !aircraft
+          ? 'Aircraft GNSS position is unavailable.'
+          : 'Aircraft GPS altitude is unavailable.'
       };
       continue;
     }
@@ -46,7 +49,21 @@ export async function evaluateThreats(
         threat,
         state: 'inactive',
         distanceKm,
-        reason: `Outside range (${formatKilometers(distanceKm)} km > ${formatKilometers(threat.rangeKm)} km).`
+        reason: `Outside range (${formatKilometers(distanceKm)} km > ${formatKilometers(threat.rangeKm)} km).`,
+        ...(threat.heightAglM === null || !terrainMetadata
+          ? { lineOfSight: { status: 'clear' as const, sampleCount: 0 } }
+          : {})
+      };
+      continue;
+    }
+
+    if (threat.heightAglM === null) {
+      results[index] = {
+        threat,
+        state: 'active',
+        distanceKm,
+        reason: 'Inside range; magic threat line of sight is always clear.',
+        lineOfSight: { status: 'clear', sampleCount: 0 }
       };
       continue;
     }
@@ -55,27 +72,39 @@ export async function evaluateThreats(
   }
 
   if (aircraft && aircraft.gpsAltitudeM !== null && pendingLos.length > 0) {
-    const losOptions = {
-      maxSampleSpacingM:
-        options.maxLosSampleSpacingM ??
-        deriveTerrainSampleSpacingM(terrain.getMetadata(), aircraft, pendingLos)
-    };
-    const batchResults = await terrain.evaluateLineOfSightBatch(
-      aircraft,
-      pendingLos.map((pending) => pending.threat),
-      losOptions
-    );
-    const losByThreatId = new Map(batchResults.map((item) => [item.threatId, item.result]));
-
-    for (const pending of pendingLos) {
-      const lineOfSight =
-        losByThreatId.get(pending.threat.id) ??
-        (await terrain.evaluateLineOfSight(aircraft, pending.threat, losOptions));
-      results[pending.index] = resultFromLineOfSight(
-        pending.threat,
-        pending.distanceKm,
-        lineOfSight
+    if (!terrainMetadata) {
+      for (const pending of pendingLos) {
+        results[pending.index] = {
+          threat: pending.threat,
+          state: 'active',
+          distanceKm: pending.distanceKm,
+          reason: 'Inside range; no elevation model is loaded, so line of sight is assumed clear.',
+          lineOfSight: { status: 'clear', sampleCount: 0 }
+        };
+      }
+    } else {
+      const losOptions = {
+        maxSampleSpacingM:
+          options.maxLosSampleSpacingM ??
+          deriveTerrainSampleSpacingM(terrainMetadata, aircraft, pendingLos)
+      };
+      const batchResults = await terrain.evaluateLineOfSightBatch(
+        aircraft,
+        pendingLos.map((pending) => pending.threat),
+        losOptions
       );
+      const losByThreatId = new Map(batchResults.map((item) => [item.threatId, item.result]));
+
+      for (const pending of pendingLos) {
+        const lineOfSight =
+          losByThreatId.get(pending.threat.id) ??
+          (await terrain.evaluateLineOfSight(aircraft, pending.threat, losOptions));
+        results[pending.index] = resultFromLineOfSight(
+          pending.threat,
+          pending.distanceKm,
+          lineOfSight
+        );
+      }
     }
   }
 

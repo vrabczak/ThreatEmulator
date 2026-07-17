@@ -8,6 +8,7 @@ import {
 } from './types';
 
 type CsvRow = Record<string, string>;
+const THREAT_CSV_COLUMNS = ['id', 'name', 'latitude', 'longitude', 'height_agl_m', 'range_km'] as const;
 
 export async function parseThreatCsvFile(file: File): Promise<ThreatCsvResult> {
   if (file.size > MAX_CSV_FILE_SIZE_BYTES) {
@@ -76,20 +77,37 @@ export function parseThreatCsvText(
   return { fileName, fileSize, threats, invalidRows, errors };
 }
 
+export function serializeThreatCsv(threats: Threat[]): string {
+  const rows = threats.map((threat) => [
+    threat.id,
+    threat.name,
+    threat.latitude,
+    threat.longitude,
+    threat.heightAglM ?? '',
+    threat.rangeKm
+  ]);
+
+  return [THREAT_CSV_COLUMNS, ...rows]
+    .map((row) => row.map((value) => escapeCsvField(String(value))).join(';'))
+    .join('\r\n');
+}
+
+function escapeCsvField(value: string): string {
+  return /[;"\r\n]/.test(value) ? `"${value.replaceAll('"', '""')}"` : value;
+}
+
 function validateThreatRow(row: CsvRow): { threat: Threat; errors: [] } | { errors: string[] } {
   const errors: string[] = [];
   const id = normalizeText(row.id);
   const name = normalizeText(row.name);
   const latitude = parseDecimal(row.latitude);
   const longitude = parseDecimal(row.longitude);
-  const heightAglM = parseDecimal(row.height_agl_m);
+  const heightAglText = normalizeText(row.height_agl_m);
+  const heightAglM = heightAglText ? parseDecimal(heightAglText) : null;
   const rangeKm = parseDecimal(row.range_km);
 
   if (!id) {
     errors.push('id is required.');
-  }
-  if (!name) {
-    errors.push('name is required.');
   }
   if (latitude === null || latitude < -90 || latitude > 90) {
     errors.push('latitude must be a decimal number between -90 and 90.');
@@ -97,7 +115,7 @@ function validateThreatRow(row: CsvRow): { threat: Threat; errors: [] } | { erro
   if (longitude === null || longitude < -180 || longitude > 180) {
     errors.push('longitude must be a decimal number between -180 and 180.');
   }
-  if (heightAglM === null || heightAglM < 0) {
+  if (heightAglText && (heightAglM === null || heightAglM < 0)) {
     errors.push('height_agl_m must be greater than or equal to 0.');
   }
   if (rangeKm === null || rangeKm < 0) {
@@ -114,7 +132,7 @@ function validateThreatRow(row: CsvRow): { threat: Threat; errors: [] } | { erro
       name,
       latitude: latitude as number,
       longitude: longitude as number,
-      heightAglM: heightAglM as number,
+      heightAglM,
       rangeKm: rangeKm as number
     },
     errors: []

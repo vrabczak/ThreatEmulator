@@ -4,21 +4,23 @@
 
 Threat Emulator is a single-page offline web application written in TypeScript using Vite. It evaluates whether an aircraft is inside the effective envelope of terrain-based threats and displays a text message threat warning when the aircraft is within both threat range and line of sight.
 
-The application runs entirely in the browser, uses user-selected local files, and is deployed as static production assets to GitHub Pages through GitHub Actions.
+The application runs entirely in the browser, uses user-selected local files and manually entered threat data, and is deployed as static production assets to GitHub Pages through GitHub Actions.
 
 ## Confirmed V1 Requirements
 
 - Target device is iPad mini.
 - Aircraft position comes from the iPad's built-in GNSS sensor through browser geolocation.
-- Browser GPS ellipsoid altitude is converted to EGM96 orthometric MSL altitude, and aircraft AGL is calculated from the loaded elevation model.
+- Browser GPS ellipsoid altitude is converted to EGM96 orthometric MSL altitude. Aircraft AGL is calculated when an elevation model is loaded and is unavailable otherwise.
 - Aircraft track is used for clock-code calculation. Heading is not used.
-- Threat scenery is loaded from a local semicolon-delimited CSV file.
-- Elevation data is loaded from a local GeoTIFF file.
-- GeoTIFF coordinates are WGS84.
-- GeoTIFF elevation values are meters MSL.
+- Threats may be imported from a local semicolon-delimited CSV file or created manually without a CSV.
+- The user can add, edit, and delete threats in the Threats panel.
+- A non-empty working threat list can be exported as a local semicolon-delimited CSV file.
+- Manual threats may be positioned by WGS84 decimal-degree coordinates, MGRS, or true bearing and distance from the latest aircraft position.
+- Elevation data may optionally be loaded from a local GeoTIFF file.
+- When loaded, GeoTIFF coordinates are WGS84 and elevation values are meters MSL.
 - Threat height is sensor height above local terrain.
 - Threat range uses horizontal ground distance.
-- Line of sight uses a flat-earth terrain obstruction check. Earth curvature and atmospheric refraction are out of scope for V1.
+- With a loaded elevation model, line of sight uses a flat-earth terrain obstruction check. Without one, all threats are assumed to have clear line of sight and horizontal range is the only activation factor. Earth curvature and atmospheric refraction are out of scope for V1.
 - The emulator evaluates threats every 3 seconds while active.
 - Warnings are visual only.
 - The primary warning is a large text message.
@@ -52,23 +54,26 @@ Final library selection should be confirmed during implementation, especially fo
 ## User Flow
 
 1. User opens the installed PWA or GitHub Pages URL.
-2. User selects a local threat scenery CSV file.
-3. App validates and previews the loaded threats.
-4. User selects a local elevation GeoTIFF file.
-5. App validates GeoTIFF metadata, coordinate system, elevation units, and coverage.
-6. User grants geolocation permission.
-7. App starts receiving aircraft GNSS fixes from the iPad.
-8. User activates the emulator.
-9. Every 3 seconds, the app evaluates the latest aircraft state against all valid threats.
-10. If one or more threats are active, the app displays a large visual warning for the closest active threat.
-11. User can stop the emulator, clear loaded files, or load replacement files.
-12. User can see status bar with gps location (lat,lon), gps altitude (feet), heigh above ground lavel (feet), gps precision
+2. User imports a local threat scenery CSV, creates one or more threats manually, or does both sequentially.
+3. App validates imported or manually entered threats and displays the editable working threat list.
+4. For manual placement, the user enters WGS84 decimal-degree coordinates, MGRS, or a true bearing and distance from the aircraft.
+5. User may optionally select a local elevation GeoTIFF file.
+6. If selected, the app validates GeoTIFF metadata, coordinate system, elevation units, and coverage.
+7. User grants geolocation permission, which is required for relative threat placement and emulator operation.
+8. App starts receiving aircraft GNSS fixes from the iPad.
+9. User activates the emulator after at least one valid threat exists.
+10. Every 3 seconds, the app evaluates the latest aircraft state against the current working threat list.
+11. If one or more threats are active, the app displays a large visual warning for the closest active threat.
+12. User can stop the emulator, import a replacement CSV, add/edit/delete individual threats, or export the current non-empty list.
+13. User can see aircraft latitude/longitude, GPS altitude, height above ground level, GPS precision, and track status.
 
 ## Threat CSV Format
 
 CSV files use a semicolon delimiter only.
 
-Required columns:
+CSV latitude and longitude remain WGS84 decimal degrees. MGRS is supported only by the interactive threat editor and does not add or replace CSV columns.
+
+CSV columns (`name` and `height_agl_m` are optional; all others are required):
 
 ```csv
 id;name;latitude;longitude;height_agl_m;range_km
@@ -78,26 +83,47 @@ T001;Example Threat;50.0755;14.4378;12;25
 Column definitions:
 
 - `id`: Stable threat identifier.
-- `name`: Human-readable threat name.
+- `name`: Optional human-readable threat description. A blank value or missing column is accepted.
 - `latitude`: Threat latitude in decimal degrees, WGS84.
 - `longitude`: Threat longitude in decimal degrees, WGS84.
-- `height_agl_m`: Threat sensor height above local terrain, in meters.
+- `height_agl_m`: Optional threat sensor height above local terrain, in meters. A blank value or missing column defines a magic threat with permanently clear line of sight.
 - `range_km`: Threat effective range, in kilometers, measured as horizontal ground distance.
 
 Validation rules:
 
-- Required columns must be present.
+- Required columns `id`, `latitude`, `longitude`, and `range_km` must be present.
 - Only semicolon-delimited CSV is supported.
 - Latitude must be between `-90` and `90`.
 - Longitude must be between `-180` and `180`.
-- Height must be greater than or equal to `0`.
+- When supplied, height must be greater than or equal to `0`.
 - Range must be greater than or equal to `0`; zero-range threats display as `100 m`.
 - Invalid rows should be reported without crashing the app.
 - CSV file size is expected to be at most 1 MB.
 
+## Threat Management And Manual Placement
+
+The Threats panel owns the working threat list used by evaluation. A CSV import initializes or replaces this list; after import, its rows can be edited or deleted and manual threats can be added to it. If the list contains local changes, importing another CSV requires confirmation before those changes are replaced.
+
+When the working list is non-empty, the panel displays an Export CSV action. Export serializes the current list rather than the original imported file, so it includes manual threats and all edits and deletions. It uses the documented semicolon-delimited columns and WGS84 decimal-degree coordinates; MGRS and aircraft-relative entries export their resolved coordinates. Optional descriptions and magic-threat heights export as blank cells. Text containing delimiters, quotes, or line breaks is CSV-escaped. The action triggers a local browser download and does not upload data.
+
+The threat editor includes:
+
+- Unique threat ID.
+- Optional human-readable description.
+- Optional sensor height AGL in meters, greater than or equal to `0` when supplied. A blank value creates a magic threat.
+- Effective range in kilometers, greater than or equal to `0`.
+- One of the following position methods:
+  - WGS84 decimal-degree latitude and longitude.
+  - MGRS grid reference at any precision accepted by the converter.
+  - True bearing from the aircraft in degrees, from `0` through `360`, and horizontal distance from the aircraft in kilometers.
+
+Coordinate and MGRS placement work without a CSV or aircraft position. MGRS input is case-insensitive, may contain spaces, and resolves to the center point of the referenced grid square. Relative placement requires a current GNSS aircraft position. When an MGRS or relative threat is saved, the app converts it to fixed WGS84 decimal-degree coordinates; the threat does not subsequently move with the aircraft. Editing an existing threat exposes its resolved decimal-degree coordinates.
+
+The editor accepts either a dot or comma decimal separator. It rejects missing required values, invalid MGRS references, coordinates outside WGS84 bounds, negative height/range/distance, invalid bearings, and IDs already used by another threat in the working list. Adding the first manual threat enables the same evaluation workflow as importing a CSV. Deleting the final threat while the emulator is active stops the emulator.
+
 ## Elevation GeoTIFF Requirements
 
-The GeoTIFF supplies terrain elevation for aircraft AGL calculation and line-of-sight checks.
+An optional GeoTIFF supplies terrain elevation for aircraft AGL calculation and terrain-aware line-of-sight checks. The emulator can start without it; in that mode, aircraft AGL is unavailable and all threats are treated as having clear line of sight.
 
 Requirements:
 
@@ -131,9 +157,9 @@ Required aircraft state:
 
 Derived aircraft state:
 
-- Terrain elevation at aircraft position from the GeoTIFF.
+- Terrain elevation at aircraft position from the GeoTIFF, when an elevation model is loaded.
 - Orthometric aircraft altitude calculated as WGS84 ellipsoid altitude minus EGM96 geoid height.
-- Aircraft AGL altitude calculated as orthometric aircraft altitude minus terrain elevation.
+- Aircraft AGL altitude calculated as orthometric aircraft altitude minus terrain elevation; unavailable without an elevation model.
 - A calculated AGL below 15 meters is replaced with 50 feet.
 - If the current aircraft terrain sample is unavailable, reuse the last successfully retrieved aircraft terrain elevation. This fallback does not apply to line-of-sight terrain samples.
 
@@ -143,13 +169,13 @@ The emulator uses the latest fully converted aircraft state every 3 seconds. A n
 
 ## Threat Evaluation
 
-The emulator evaluates all valid threats every 3 seconds while active.
+The emulator evaluates all valid threats in the current editable working list every 3 seconds while active. A threat change invalidates prior results; while active, the app evaluates the updated list without waiting for a page reload.
 
 For each threat:
 
 1. Calculate horizontal ground distance from aircraft to threat.
 2. If distance is greater than `range_km`, mark threat as inactive.
-3. If distance is within range, calculate line of sight.
+3. If distance is within range, assume line of sight is clear for a magic threat. For other threats, calculate line of sight when an elevation model is loaded; otherwise assume it is clear.
 4. If line of sight is clear, mark threat as active.
 5. Generate a threat call using GPS-track-relative clock code and distance.
 
@@ -157,7 +183,7 @@ Threat states:
 
 - `inactive`: Aircraft is outside threat range or line of sight is blocked.
 - `active`: Aircraft is inside threat range and line of sight is clear.
-- `terrain unavailable`: Required terrain data is missing or outside GeoTIFF coverage.
+- `terrain unavailable`: An elevation model is loaded, but required terrain data is missing or outside its coverage. A completely unloaded elevation model does not produce this state.
 - `aircraft state unavailable`: Current GNSS position, altitude, or track is unavailable.
 - `invalid`: Threat row failed validation.
 
@@ -165,7 +191,7 @@ If multiple threats are active, the closest active threat has display priority.
 
 ## Line-Of-Sight Calculation
 
-V1 uses a flat-earth terrain obstruction check.
+When an elevation model is loaded, V1 uses a flat-earth terrain obstruction check for threats with a numeric AGL. Magic threats (blank or missing AGL) are always reported as clear/VLOS without terrain sampling. When no model is loaded, LOS is reported as clear/VLOS for every threat and no terrain sampling is performed; threat activation depends only on horizontal range.
 
 Algorithm:
 
@@ -225,8 +251,12 @@ V1 is a text/status interface, not a map interface.
 
 Required controls and displays:
 
-- Threat CSV file picker.
-- Elevation GeoTIFF file picker.
+- Threat CSV file picker; importing CSV is optional when threats are entered manually.
+- Add-threat action available when no CSV is loaded.
+- Edit and delete actions for every imported or manual threat.
+- Export CSV action visible only when at least one threat exists.
+- Threat editor for ID, description, height AGL, effective range, and decimal-degree, MGRS, or aircraft-relative placement.
+- Optional elevation GeoTIFF file picker.
 - Loaded data status and validation summary.
 - Geolocation permission/status indicator.
 - Current aircraft latitude, longitude, GPS altitude, calculated AGL, and GPS track.
@@ -234,7 +264,7 @@ Required controls and displays:
 - Current evaluation status.
 - Large primary warning text.
 - Threat validation/status summary.
-- Separate collapsible aircraft status and threat table panels, collapsed by default. The threat table uses two-line ID/description, distance/range, and LOS/state columns. Activation conditions are color-coded: in-range distance, VLOS, and active state are green; out-of-range distance, BLOS, and inactive state are red. Values not yet evaluated use neutral placeholders, while unavailable states are amber.
+- Separate collapsible aircraft status and threat table panels, collapsed by default. The threat table uses two-line ID/description, distance/range, LOS/state, and actions columns. Activation conditions are color-coded: in-range distance, VLOS, and active state are green; out-of-range distance, BLOS, and inactive state are red. Values not yet evaluated use neutral placeholders, while unavailable states are amber.
 
 The UI must be designed for iPad mini screen size and touch interaction.
 
@@ -244,8 +274,10 @@ The UI must be designed for iPad mini screen size and touch interaction.
 - The app should be installable as a PWA.
 - Static app assets should be cached for offline launch.
 - User-selected CSV and GeoTIFF files remain local to the device.
+- Manually entered and locally edited threats remain in browser memory for the current page session; they are not uploaded or written back to the source CSV.
+- Exported CSV files are generated locally from the in-memory working list.
 - No loaded file contents should be uploaded.
-- The app should clearly indicate whether required local files need to be reselected after a fresh launch.
+- The app should clearly indicate whether required local files, and any optional remembered GeoTIFF, need to be reselected after a fresh launch.
 
 Because the GeoTIFF may be 1-3 GB, the application should not try to cache the elevation file as a PWA asset.
 
@@ -265,11 +297,15 @@ CI/CD:
 
 The app should show actionable errors for:
 
-- Missing CSV file.
+- Emulator activation when the working threat list is empty.
 - Malformed CSV.
 - Wrong CSV delimiter.
 - Missing CSV columns.
 - Invalid threat rows.
+- Missing or invalid manual threat fields.
+- Missing or invalid MGRS coordinate.
+- Duplicate manual threat ID.
+- Relative placement requested before an aircraft GNSS position is available.
 - Unsupported or unreadable GeoTIFF.
 - GeoTIFF not in WGS84.
 - GeoTIFF elevation values unavailable.
@@ -280,7 +316,7 @@ The app should show actionable errors for:
 - Aircraft GPS altitude unavailable.
 - Aircraft GPS track unavailable.
 - Aircraft or threat outside GeoTIFF coverage.
-- Emulator activated before required inputs are ready.
+- Emulator activated before required threat or aircraft inputs are ready. An elevation model is not a required input.
 
 ## Performance Considerations
 
@@ -298,6 +334,12 @@ The app should show actionable errors for:
 Automated tests should cover:
 
 - Semicolon CSV parsing and validation.
+- Manual coordinate threat creation and validation.
+- MGRS-to-WGS84 threat creation and invalid-MGRS validation.
+- Aircraft-relative placement by true bearing and distance.
+- Relative-placement behavior when aircraft position is unavailable.
+- Duplicate threat ID rejection.
+- Current-list CSV serialization, including escaping and blank optional fields.
 - Distance calculation.
 - Bearing calculation.
 - GPS-track-relative clock code conversion.
@@ -305,6 +347,7 @@ Automated tests should cover:
 - Terrain sampling.
 - Aircraft AGL calculation.
 - Line-of-sight blocked and clear cases.
+- No-elevation-model behavior where LOS is assumed clear and range is the only activation factor.
 - Threat activation logic.
 - Closest-threat prioritization.
 
@@ -316,12 +359,11 @@ Manual test fixtures should include:
 
 The repository should include the sample CSV fixture only. Large GeoTIFF fixtures should not be committed.
 
-## Remaining Questions Before Implementation
+## Remaining Open Questions
 
 1. Which iPad mini generation and iPadOS/Safari version must be supported?
-2. Should CSV decimal values use a dot only, or should comma decimals also be accepted because the delimiter is semicolon?
-3. Should GPS track come directly from browser geolocation `coords.heading`, be calculated from successive position fixes, or use both with fallback logic?
-4. What should the warning display when GPS track is temporarily unavailable or the aircraft is moving too slowly for a reliable track?
-5. Should there be a manual GPS altitude offset or calibration option if iPad altitude and GeoTIFF MSL elevations do not align well enough?
-6. What maximum acceptable line-of-sight error is acceptable for V1?
-7. Are the large elevation files standard GeoTIFF, BigTIFF, Cloud Optimized GeoTIFF, or unknown?
+2. Should GPS track come directly from browser geolocation `coords.heading`, be calculated from successive position fixes, or use both with fallback logic?
+3. What should the warning display when GPS track is temporarily unavailable or the aircraft is moving too slowly for a reliable track?
+4. Should there be a manual GPS altitude offset or calibration option if iPad altitude and GeoTIFF MSL elevations do not align well enough?
+5. What maximum acceptable line-of-sight error is acceptable for V1?
+6. Are the large elevation files standard GeoTIFF, BigTIFF, Cloud Optimized GeoTIFF, or unknown?

@@ -29,14 +29,15 @@ export function buildPrimaryWarning(
   }
 
   const rangeText = formatThreatRange(result.distanceKm).toUpperCase();
+  const threatLabel = (result.threat.name || result.threat.id).toUpperCase();
 
   if (!aircraft || aircraft.trackDegrees === null) {
-    return `THREAT ${result.threat.name.toUpperCase()} ${rangeText} TRACK UNAVAILABLE`;
+    return `THREAT ${threatLabel} ${rangeText} TRACK UNAVAILABLE`;
   }
 
   const clock = clockCodeForThreat(aircraft, result.threat);
   if (clock === null) {
-    return `THREAT ${result.threat.name.toUpperCase()} ${rangeText} TRACK UNAVAILABLE`;
+    return `THREAT ${threatLabel} ${rangeText} TRACK UNAVAILABLE`;
   }
 
   return `THREAT ${clock} O'CLOCK ${rangeText}`;

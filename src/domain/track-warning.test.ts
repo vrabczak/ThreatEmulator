@@ -68,5 +68,11 @@ describe('warning call', () => {
     expect(buildPrimaryWarning(activeResult, { ...aircraft, trackDegrees: null })).toBe(
       'THREAT ALPHA 7 KM TRACK UNAVAILABLE'
     );
+    expect(
+      buildPrimaryWarning(
+        { ...activeResult, threat: { ...activeResult.threat, name: '' } },
+        { ...aircraft, trackDegrees: null }
+      )
+    ).toBe('THREAT T001 7 KM TRACK UNAVAILABLE');
   });
 });
