@@ -27,7 +27,8 @@ The application runs entirely in the browser, uses user-selected local files and
 - If multiple threats are active, the closest threat has priority.
 - Distance is displayed using standard threat range buckets: 100m through 900m in
   100m steps, then 1km, 1.5km, 2km, and whole-kilometer buckets from 3km upward.
-- V1 does not include a map. The user-facing output is text/status only.
+- V1 includes a collapsible Leaflet map showing the latest aircraft position, all threat positions, and each threat's effective-range circle.
+- The map lets the user choose OpenStreetMap, OpenTopoMap, or Google satellite imagery when online. Leaflet controls and all aircraft/threat overlays remain available without tiles when offline.
 - The app should be installable as a PWA for offline launch.
 - CSV files are expected to be no larger than 1 MB.
 - GeoTIFF files are expected to be large, approximately 1-3 GB.
@@ -38,6 +39,9 @@ The application runs entirely in the browser, uses user-selected local files and
 - TypeScript.
 - Vite.
 - Browser-only single-page application.
+- Leaflet for the interactive situational map.
+- OpenStreetMap and OpenTopoMap raster tiles as keyless online background layers.
+- Google satellite imagery through the official Google Maps JavaScript API and Leaflet GoogleMutant adapter when a Google browser API key is configured.
 - PWA support for offline launch.
 - Static production build deployed to GitHub Pages.
 - GitHub Actions workflow for build and deploy.
@@ -66,6 +70,7 @@ Final library selection should be confirmed during implementation, especially fo
 11. If one or more threats are active, the app displays a large visual warning for the closest active threat.
 12. User can stop the emulator, import a replacement CSV, add/edit/delete individual threats, or export the current non-empty list.
 13. User can see aircraft latitude/longitude, GPS altitude, height above ground level, GPS precision, and track status.
+14. User can expand the Map panel to view the aircraft, threats, and threat effective ranges and select OpenStreetMap, OpenTopoMap, or configured Google satellite imagery. The app shows the selected tiles while online and an overlay-only grid while offline.
 
 ## Threat CSV Format
 
@@ -247,7 +252,7 @@ Multiple active threats:
 
 ## User Interface
 
-V1 is a text/status interface, not a map interface.
+V1 uses a text/status warning interface with a secondary situational map. The map supplements the warning and evaluation table; it does not participate in threat activation or line-of-sight calculations.
 
 Required controls and displays:
 
@@ -265,6 +270,14 @@ Required controls and displays:
 - Large primary warning text.
 - Threat validation/status summary.
 - Separate collapsible aircraft status and threat table panels, collapsed by default. The threat table uses two-line ID/description, distance/range, LOS/state, and actions columns. Activation conditions are color-coded: in-range distance, VLOS, and active state are green; out-of-range distance, BLOS, and inactive state are red. Values not yet evaluated use neutral placeholders, while unavailable states are amber.
+- A separate collapsible Map panel, collapsed by default, containing:
+  - A blue directional aircraft marker at the latest GNSS position. Its orientation follows GPS track when track is available.
+  - A red marker and identifier for every threat in the working list.
+  - A red metric circle centered on each threat with radius equal to `range_km`.
+  - Tooltips containing aircraft coordinates or threat description and effective range.
+  - A base-map selector for OpenStreetMap, OpenTopoMap, and Google satellite. Google satellite is disabled with an API-key-required label when `VITE_GOOGLE_MAPS_API_KEY` is not configured.
+  - A legend and a visible connectivity state: `Online - map tiles available` or `Offline - overlays only`.
+  - Automatic framing when the displayed aircraft/threat set changes, while preserving user pan and zoom during ordinary aircraft position updates.
 
 The UI must be designed for iPad mini screen size and touch interaction.
 
@@ -273,6 +286,10 @@ The UI must be designed for iPad mini screen size and touch interaction.
 - The app must not require a backend after initial load.
 - The app should be installable as a PWA.
 - Static app assets should be cached for offline launch.
+- Leaflet code and styles are bundled with the app and remain available offline.
+- The selected OpenStreetMap, OpenTopoMap, or configured Google satellite layer is added only while `navigator.onLine` reports online. The base layer is removed when the browser goes offline, leaving aircraft markers, threat markers, range circles, zoom/pan controls, and a neutral grid background available.
+- Returning online restores the selected base layer without requiring a page reload.
+- Google satellite uses the official Google Maps JavaScript API, requires billing and an HTTP-referrer-restricted browser API key, and is not loaded until selected. Production builds receive the optional key through the `GOOGLE_MAPS_API_KEY` GitHub Actions secret.
 - User-selected CSV and GeoTIFF files remain local to the device.
 - Manually entered and locally edited threats remain in browser memory for the current page session; they are not uploaded or written back to the source CSV.
 - Exported CSV files are generated locally from the in-memory working list.
@@ -327,6 +344,7 @@ The app should show actionable errors for:
 - GeoTIFF metadata and raster windows should be cached where useful.
 - Terrain sampling should be bounded to prevent long UI stalls.
 - Expensive GeoTIFF reads and LOS calculations should be candidates for a web worker.
+- Map overlay updates should reuse one Leaflet map and overlay layer rather than recreate the map for every GNSS fix. The map should initialize only when its collapsed panel is first opened.
 - The target performance device is iPad mini, so memory pressure and browser file handling limits are important risks.
 
 ## Testing Strategy
@@ -356,6 +374,7 @@ Manual test fixtures should include:
 - A small sample CSV.
 - Mocked or synthetic terrain grid data for LOS tests.
 - Known aircraft positions for out-of-range, in-range blocked, and in-range clear cases.
+- Online and offline Map panel checks confirming that OpenStreetMap, OpenTopoMap, and configured Google satellite selection follows connectivity while aircraft markers, threat markers, range circles, tooltips, and controls remain available in both modes.
 
 The repository should include the sample CSV fixture only. Large GeoTIFF fixtures should not be committed.
 

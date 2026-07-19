@@ -6,6 +6,7 @@ import { formatThreatRange } from './domain/geo';
 import { buildThreatFromEditor, type ThreatPositionMode } from './domain/threat-editor';
 import { buildPrimaryWarning } from './domain/warning';
 import { GeolocationTracker, type GeolocationStatus } from './services/geolocation';
+import { ThreatMap, type BaseMapId } from './services/threat-map';
 import {
   forgetPersistentTerrainFile,
   pickPersistentTerrainFile,
@@ -31,6 +32,7 @@ registerSW({ immediate: true });
 const terrainService = new WorkerTerrainService();
 const geoidModel = new Egm96GeoidModel();
 const persistentTerrainSupported = supportsPersistentFilePicker();
+const threatMap = new ThreatMap();
 
 let csvResult: ThreatCsvResult | null = null;
 let threats: Threat[] = [];
@@ -239,6 +241,29 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         </div>
       </details>
 
+      <details id="mapPanel" class="panel collapsible-panel map-panel">
+        <summary class="panel-header">
+          <span class="panel-title">Map</span>
+          <span id="mapConnectivity" class="map-connectivity" aria-live="polite"></span>
+        </summary>
+        <div class="panel-body map-panel-body">
+          <div class="map-toolbar">
+            <label for="mapBaseLayer">Base map</label>
+            <select id="mapBaseLayer">
+              <option value="street">OpenStreetMap</option>
+              <option value="topographic">OpenTopoMap</option>
+              <option id="googleSatelliteOption" value="google-satellite">Google satellite</option>
+            </select>
+            <span id="mapProviderStatus" class="map-provider-status" aria-live="polite"></span>
+          </div>
+          <div id="threatMap" class="threat-map" role="region" aria-label="Aircraft, threats, and threat ranges"></div>
+          <div class="map-legend" aria-label="Map legend">
+            <span><i class="map-legend-aircraft" aria-hidden="true"></i>Aircraft</span>
+            <span><i class="map-legend-threat" aria-hidden="true"></i>Threat and effective range</span>
+          </div>
+        </div>
+      </details>
+
     </section>
   </main>
 `;
@@ -256,6 +281,36 @@ const exportThreatsButton = getElement<HTMLButtonElement>('exportThreatsButton')
 const threatEditor = getElement<HTMLFormElement>('threatEditor');
 const cancelThreatButton = getElement<HTMLButtonElement>('cancelThreatButton');
 const threatRows = getElement<HTMLTableSectionElement>('threatRows');
+const mapPanel = getElement<HTMLDetailsElement>('mapPanel');
+const mapBaseLayer = getElement<HTMLSelectElement>('mapBaseLayer');
+const googleSatelliteOption = getElement<HTMLOptionElement>('googleSatelliteOption');
+googleSatelliteOption.disabled = !threatMap.hasGoogleImagery();
+if (googleSatelliteOption.disabled) {
+  googleSatelliteOption.textContent = 'Google satellite (API key required)';
+}
+
+mapPanel.addEventListener('toggle', () => {
+  if (!mapPanel.open) {
+    return;
+  }
+  threatMap.initialize(getElement('threatMap'), navigator.onLine);
+  void applyMapBaseLayer();
+  threatMap.update(aircraftState, threats);
+  window.requestAnimationFrame(() => threatMap.invalidateSize());
+});
+
+mapBaseLayer.addEventListener('change', () => {
+  void applyMapBaseLayer();
+});
+
+window.addEventListener('online', () => {
+  renderMapConnectivity();
+  void applyMapBaseLayer();
+});
+window.addEventListener('offline', () => {
+  renderMapConnectivity();
+  void applyMapBaseLayer();
+});
 
 csvInput.addEventListener('change', () => {
   const file = csvInput.files?.[0];
@@ -886,6 +941,8 @@ function render(): void {
   setText('trackValue', renderTrack());
 
   renderThreatRows();
+  renderMapConnectivity();
+  threatMap.update(aircraftState, threats);
   exportThreatsButton.hidden = threats.length === 0;
   if (!threatEditor.hidden) {
     updatePositionModeFields();
@@ -897,6 +954,52 @@ function render(): void {
   stayAwakeButton.textContent = wakeLock ? 'Allow sleep' : 'Stay awake';
   stayAwakeButton.setAttribute('aria-pressed', String(wakeLock !== null));
   stayAwakeButton.classList.toggle('awake-active', wakeLock !== null);
+}
+
+function renderMapConnectivity(): void {
+  const online = navigator.onLine;
+  const status = getElement('mapConnectivity');
+  status.textContent = online ? 'Online - map tiles available' : 'Offline - overlays only';
+  status.classList.toggle('offline', !online);
+}
+
+let mapBaseLayerRequest = 0;
+
+async function applyMapBaseLayer(): Promise<void> {
+  const request = ++mapBaseLayerRequest;
+  const status = getElement('mapProviderStatus');
+  const baseMap = selectedBaseMap();
+  status.classList.remove('error');
+  status.textContent = navigator.onLine
+    ? baseMap === 'google-satellite'
+      ? 'Loading Google imagery...'
+      : 'Loading map tiles...'
+    : 'Selected base map will return when online.';
+
+  try {
+    await threatMap.setBaseMap(baseMap, navigator.onLine);
+    if (request !== mapBaseLayerRequest) {
+      return;
+    }
+    status.textContent = navigator.onLine
+      ? baseMap === 'street'
+        ? 'OpenStreetMap selected.'
+        : baseMap === 'topographic'
+          ? 'OpenTopoMap selected.'
+          : 'Google satellite selected.'
+      : 'Selected base map will return when online.';
+  } catch (error) {
+    if (request !== mapBaseLayerRequest) {
+      return;
+    }
+    status.textContent = error instanceof Error ? error.message : 'Unable to load the selected base map.';
+    status.classList.add('error');
+  }
+}
+
+function selectedBaseMap(): BaseMapId {
+  const value = mapBaseLayer.value;
+  return value === 'topographic' || value === 'google-satellite' ? value : 'street';
 }
 
 function updateEvaluationCountdown(): void {

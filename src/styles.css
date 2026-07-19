@@ -157,6 +157,10 @@ input {
   grid-column: 1 / -1;
 }
 
+.map-panel {
+  grid-column: 1 / -1;
+}
+
 .panel-header {
   padding: 0.8rem 0.9rem;
   border-bottom: 1px solid #e5e7eb;
@@ -190,6 +194,150 @@ input {
 
 .collapsible-panel:not([open]) > .panel-header {
   border-bottom: 0;
+}
+
+.panel-title {
+  flex: 1 1 auto;
+}
+
+.map-connectivity {
+  color: #047857;
+  font-size: 0.82rem;
+  font-weight: 750;
+}
+
+.map-connectivity.offline {
+  color: #a16207;
+}
+
+.map-panel-body {
+  gap: 0.65rem;
+}
+
+.map-toolbar {
+  display: grid;
+  grid-template-columns: auto minmax(12rem, 18rem) 1fr;
+  align-items: center;
+  gap: 0.55rem 0.75rem;
+}
+
+.map-toolbar label {
+  font-weight: 800;
+}
+
+.map-toolbar select {
+  min-height: 2.75rem;
+  padding: 0.55rem 2.2rem 0.55rem 0.7rem;
+  border: 1px solid #9ca3af;
+  border-radius: 6px;
+  color: #111827;
+  background: #ffffff;
+  font: inherit;
+  font-weight: 700;
+}
+
+.map-provider-status {
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.map-provider-status.error {
+  color: #b91c1c;
+}
+
+.threat-map {
+  width: 100%;
+  height: clamp(22rem, 58vh, 42rem);
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background-color: #e2e8f0;
+  background-image:
+    linear-gradient(rgb(100 116 139 / 16%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(100 116 139 / 16%) 1px, transparent 1px);
+  background-size: 2rem 2rem;
+  overflow: hidden;
+}
+
+.map-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem 1.25rem;
+  color: #475569;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.map-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.map-legend i {
+  display: inline-block;
+  width: 0.85rem;
+  height: 0.85rem;
+}
+
+.map-legend-aircraft {
+  border-radius: 3px;
+  background: #1d4ed8;
+}
+
+.map-legend-threat {
+  border: 2px solid #dc2626;
+  border-radius: 999px;
+  background: rgb(239 68 68 / 12%);
+}
+
+.threat-map-div-icon,
+.aircraft-map-div-icon {
+  border: 0;
+  background: transparent;
+}
+
+.threat-map-marker {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: max-content;
+  max-width: 10rem;
+  color: #7f1d1d;
+  font-size: 0.78rem;
+  font-weight: 900;
+  text-shadow: 0 1px 2px #ffffff, 0 0 3px #ffffff;
+}
+
+.threat-map-marker-dot {
+  width: 1.15rem;
+  height: 1.15rem;
+  flex: 0 0 auto;
+  border: 3px solid #ffffff;
+  border-radius: 999px;
+  background: #dc2626;
+  box-shadow: 0 1px 4px rgb(15 23 42 / 55%);
+}
+
+.threat-map-marker-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.aircraft-map-marker {
+  display: grid;
+  width: 2rem;
+  height: 2rem;
+  place-items: center;
+  color: #ffffff;
+  border: 3px solid #ffffff;
+  border-radius: 999px;
+  background: #1d4ed8;
+  box-shadow: 0 2px 7px rgb(15 23 42 / 55%);
+  font-size: 1rem;
+  line-height: 1;
+  transform: rotate(var(--aircraft-track));
 }
 
 .panel-body {
@@ -641,6 +789,10 @@ button.delete-action {
   .threat-panel {
     grid-column: auto;
   }
+
+  .map-panel {
+    grid-column: auto;
+  }
 }
 
 @media (max-width: 700px) {
@@ -677,5 +829,9 @@ button.delete-action {
   .editor-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
+  }
+
+  .map-toolbar {
+    grid-template-columns: 1fr;
   }
 }

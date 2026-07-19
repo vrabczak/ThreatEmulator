@@ -1,8 +1,8 @@
 # Threat Emulator
 
-Threat Emulator is an offline-capable browser application for evaluating terrain-based threat warnings. It loads local threat scenery from CSV, loads local terrain elevation from GeoTIFF, watches the aircraft position through browser geolocation, and displays a large text warning when the aircraft is inside a threat's range with clear line of sight.
+Threat Emulator is an offline-capable browser application for evaluating terrain-based threat warnings. It loads local threat scenery from CSV, loads local terrain elevation from GeoTIFF, watches the aircraft position through browser geolocation, and displays a large text warning when the aircraft is inside a threat's range with clear line of sight. A collapsible Leaflet map shows the aircraft, threats, and their effective-range circles.
 
-The app is built with TypeScript, Vite, Vitest, `geotiff`, `papaparse`, and `vite-plugin-pwa`.
+The app is built with TypeScript, Vite, Vitest, Leaflet, `geotiff`, `papaparse`, and `vite-plugin-pwa`.
 
 ## Features
 
@@ -17,6 +17,8 @@ The app is built with TypeScript, Vite, Vitest, `geotiff`, `papaparse`, and `vit
 - Evaluates threats every 3 seconds while the emulator is active.
 - Prioritizes the closest active threat.
 - Shows aircraft position, GPS altitude, height above ground, precision, track, validation status, and evaluation results.
+- Shows aircraft and threat positions with effective-range circles in a collapsible Leaflet map.
+- Lets the user choose OpenStreetMap, OpenTopoMap, or optionally Google satellite imagery while online, and keeps the map overlays available over a neutral grid when offline.
 
 ## Requirements
 
@@ -24,6 +26,7 @@ The app is built with TypeScript, Vite, Vitest, `geotiff`, `papaparse`, and `vit
 - npm.
 - A browser that supports geolocation, web workers, file input, and service workers.
 - HTTPS or `localhost` when using geolocation in the browser.
+- After the PWA assets have been cached, a network connection is optional for app operation. The Map panel uses it for the selected background tiles; the map controls and aircraft/threat overlays remain available offline.
 - Optionally, a WGS84 elevation GeoTIFF in meters MSL for terrain-aware line-of-sight checks.
 
 Large GeoTIFF files are expected to be local user files and are not included in this repository.
@@ -63,7 +66,14 @@ npm run preview
 4. Grant browser geolocation permission when prompted.
 5. Wait for an aircraft position with GPS altitude.
 6. Start the emulator.
-7. Expand the collapsed Aircraft Status and Threats panels as needed. The threat table is available before the emulator starts and shows each threat's ID/description, distance/range, LOS/state, and edit/delete actions.
+7. Expand the collapsed Aircraft Status, Threats, and Map panels as needed. The threat table is available before the emulator starts and shows each threat's ID/description, distance/range, LOS/state, and edit/delete actions.
+8. In the Map panel, choose OpenStreetMap, OpenTopoMap, or Google satellite as the base map. Red markers identify threats, red circles show their effective ranges, and the blue directional marker identifies the latest aircraft position. Online tiles disappear while offline, but the same overlays remain usable over a neutral grid.
+
+### Google satellite configuration
+
+Google satellite imagery is optional and uses the official Google Maps JavaScript API. Copy `.env.example` to `.env.local`, set `VITE_GOOGLE_MAPS_API_KEY`, and restart the development server or rebuild the app. The Google Cloud project must have billing and the Maps JavaScript API enabled. Restrict the browser key to the app's HTTP referrers before deployment.
+
+For GitHub Pages, create a repository Actions secret named `GOOGLE_MAPS_API_KEY`. The deployment workflow exposes it to Vite only during the static build. Like all browser map keys, the built value is visible to clients, so HTTP-referrer and API restrictions are required. If no key is configured, the Google satellite option remains visible but disabled; OpenStreetMap and OpenTopoMap continue to work.
 
 The threat editor works without a CSV. Coordinate placement accepts decimal WGS84 latitude and longitude or an MGRS grid reference. MGRS input is converted to the center of its grid square in fixed WGS84 coordinates when saved. Relative placement similarly converts a true bearing and distance from the latest GNSS aircraft position into fixed WGS84 coordinates. The CSV schema remains decimal degrees only. Importing a CSV replaces the current threat list; the app asks for confirmation first when that list has local edits. When at least one threat exists, `Export CSV` downloads the current list, including all imported and manual edits, in the same decimal-degree schema.
 
@@ -125,7 +135,7 @@ For each valid threat, the emulator:
 
 GNSS fixes are published to threat evaluation atomically after their EGM96 conversion finishes. While a newer fix is being converted, the previous fully converted aircraft state remains available, so the 3-second evaluation does not skip LOS merely because conversion is in progress.
 
-V1 does not model earth curvature, atmospheric refraction, buildings, or a map display.
+V1 does not model earth curvature, atmospheric refraction, or buildings. The map is a situational display and does not alter threat evaluation.
 
 ## Scripts
 
@@ -141,7 +151,7 @@ V1 does not model earth curvature, atmospheric refraction, buildings, or a map d
 ```text
 src/
   domain/       Core CSV parsing, geospatial math, warning, LOS, and evaluation logic
-  services/     Browser-facing geolocation and terrain service wrappers
+  services/     Browser-facing geolocation, Leaflet map, and terrain service wrappers
   workers/      GeoTIFF terrain loading, sampling, and LOS worker code
   main.ts       UI wiring and app state
 fixtures/       Sample threat CSV data
