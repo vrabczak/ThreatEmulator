@@ -54,15 +54,15 @@ export function buildThreatWarning(
   const threatLabel = (result.threat.name || result.threat.id).toUpperCase();
 
   if (!aircraft || aircraft.trackDegrees === null) {
-    return `THREAT ${threatLabel} ${rangeText} TRACK UNAVAILABLE`;
+    return `${threatLabel} ${rangeText}`;
   }
 
   const clock = clockCodeForThreat(aircraft, result.threat);
   if (clock === null) {
-    return `THREAT ${threatLabel} ${rangeText} TRACK UNAVAILABLE`;
+    return `${threatLabel} ${rangeText}`;
   }
 
-  return `THREAT ${clock} O'CLOCK ${rangeText}`;
+  return `${threatLabel} ${clock} O'CLOCK ${rangeText}`;
 }
 
 /**

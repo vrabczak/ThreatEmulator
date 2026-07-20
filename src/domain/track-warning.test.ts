@@ -73,16 +73,16 @@ describe('warning call', () => {
   });
 
   it('builds threat warning text', () => {
-    expect(buildThreatWarning(activeResult, aircraft)).toBe("THREAT 3 O'CLOCK 7 KM");
+    expect(buildThreatWarning(activeResult, aircraft)).toBe("ALPHA 3 O'CLOCK 7 KM");
     expect(buildThreatWarning(activeResult, { ...aircraft, trackDegrees: null })).toBe(
-      'THREAT ALPHA 7 KM TRACK UNAVAILABLE'
+      'ALPHA 7 KM'
     );
     expect(
       buildThreatWarning(
         { ...activeResult, threat: { ...activeResult.threat, name: '' } },
         { ...aircraft, trackDegrees: null }
       )
-    ).toBe('THREAT T001 7 KM TRACK UNAVAILABLE');
+    ).toBe('T001 7 KM');
   });
 
   it('keeps first-appearance order and appends a reactivated threat', () => {

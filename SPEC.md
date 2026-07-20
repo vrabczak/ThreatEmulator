@@ -183,7 +183,7 @@ For each threat:
 2. If distance is greater than `range_km`, mark threat as inactive.
 3. If distance is within range, assume line of sight is clear for a magic threat. For other threats, calculate line of sight when an elevation model is loaded; otherwise assume it is clear.
 4. If line of sight is clear, mark threat as active.
-5. Generate a threat call using GPS-track-relative clock code and distance.
+5. Generate a threat call using description, GPS-track-relative clock code, and distance, in that order.
 
 Threat states:
 
@@ -228,8 +228,12 @@ When a threat is active, the app displays a large visual warning text message.
 Example:
 
 ```text
-THREAT 3 O'CLOCK 12.4 KM
+ALPHA 3 O'CLOCK 12 KM
 ```
+
+Warning calls use the structure `DESCRIPTION CLOCK CODE DISTANCE`. The threat's
+ID replaces the description when its description is blank. The clock-code
+component is omitted when aircraft track is unavailable.
 
 Clock-code calculation:
 
