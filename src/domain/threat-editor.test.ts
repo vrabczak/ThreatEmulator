@@ -1,4 +1,5 @@
 import { buildThreatFromEditor, type ThreatEditorInput } from './threat-editor';
+import { distanceMeters } from './geo';
 
 const coordinateInput: ThreatEditorInput = {
   id: 'T100',
@@ -62,12 +63,73 @@ describe('buildThreatFromEditor', () => {
     }
   });
 
+  it.each([
+    ['33UVR', 100_000],
+    ['33U VR 5 4', 10_000],
+    ['33UVR5947', 1_000],
+    ['33U VR 597 471', 100],
+    ['33UVR59774717', 10],
+    ['33U VR 59772 47176', 1]
+  ])('accepts variable MGRS precision: %s', (mgrs, gridSizeM) => {
+    const result = buildThreatFromEditor(
+      { ...coordinateInput, positionMode: 'mgrs', mgrs },
+      null
+    );
+
+    expect('threat' in result).toBe(true);
+    if ('threat' in result) {
+      expect(
+        distanceMeters(
+          { latitude: result.threat.latitude, longitude: result.threat.longitude },
+          { latitude: 50.0755, longitude: 14.4378 }
+        )
+      ).toBeLessThan(gridSizeM);
+    }
+  });
+
+  it.each([
+    '33UVR5977247176',
+    '33u vr 59772 47176',
+    '  33U   VR   59772   47176  ',
+    '33U\tVR\t59772\t47176'
+  ])('accepts MGRS regardless of case and whitespace: %j', (mgrs) => {
+    const result = buildThreatFromEditor(
+      { ...coordinateInput, positionMode: 'mgrs', mgrs },
+      null
+    );
+
+    expect(result).toMatchObject({
+      threat: {
+        latitude: expect.closeTo(50.0755, 4),
+        longitude: expect.closeTo(14.4378, 4)
+      },
+      errors: []
+    });
+  });
+
   it('rejects a missing or malformed MGRS coordinate', () => {
     expect(
       buildThreatFromEditor({ ...coordinateInput, positionMode: 'mgrs', mgrs: '' }, null).errors
     ).toContain('MGRS coordinate is required.');
     expect(
+      buildThreatFromEditor({ ...coordinateInput, positionMode: 'mgrs', mgrs: ' \t ' }, null)
+        .errors
+    ).toContain('MGRS coordinate is required.');
+    expect(
       buildThreatFromEditor({ ...coordinateInput, positionMode: 'mgrs', mgrs: 'NOT-MGRS' }, null).errors
+    ).toContain('MGRS coordinate is invalid.');
+  });
+
+  it.each([
+    ['33UVR5977247176junk', 'non-numeric suffix'],
+    ['33UVR597724717612', 'more than five digits per coordinate'],
+    ['33UVR1234567', 'uneven easting and northing precision'],
+    ['00UVR5977247176', 'zone zero'],
+    ['61UVR5977247176', 'zone above 60'],
+    ['33IVR5977247176', 'forbidden latitude band']
+  ])('rejects invalid MGRS input with a %s (%s)', (mgrs) => {
+    expect(
+      buildThreatFromEditor({ ...coordinateInput, positionMode: 'mgrs', mgrs }, null).errors
     ).toContain('MGRS coordinate is invalid.');
   });
 

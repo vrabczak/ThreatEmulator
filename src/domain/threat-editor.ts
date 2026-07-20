@@ -4,6 +4,8 @@ import { destinationPoint } from './geo';
 import type { LatLon } from './geo';
 import type { Threat } from './types';
 
+const MGRS_PATTERN = /^(?:0?[1-9]|[1-5]\d|60)[C-HJ-NP-X][A-HJ-NP-Z][A-HJ-NP-V](?:\d{2}){0,5}$/;
+
 export type ThreatPositionMode = 'coordinates' | 'mgrs' | 'relative';
 
 export interface ThreatEditorInput {
@@ -72,9 +74,15 @@ function resolveEditorLocation(
   aircraftPosition: LatLon | null
 ): { location: LatLon } | { errors: string[] } {
   if (input.positionMode === 'mgrs') {
-    const mgrs = input.mgrs.trim();
+    const mgrs = input.mgrs.replace(/\s/g, '').toUpperCase();
     if (!mgrs) {
       return { errors: ['MGRS coordinate is required.'] };
+    }
+
+    // The converter can partially parse
+    // non-digits or accept more than the standard five digits per axis.
+    if (!MGRS_PATTERN.test(mgrs)) {
+      return { errors: ['MGRS coordinate is invalid.'] };
     }
 
     try {
