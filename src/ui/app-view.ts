@@ -4,7 +4,7 @@
  */
 
 import { formatThreatRange } from '../domain/geo';
-import { buildPrimaryWarning } from '../domain/warning';
+import { buildThreatWarning } from '../domain/warning';
 import type {
   AircraftState,
   TerrainMetadata,
@@ -37,6 +37,7 @@ export interface AppViewModel {
   evaluationInFlight: boolean;
   nextEvaluationAtMs: number | null;
   lastEvaluation: ThreatEvaluationSummary | null;
+  activeThreatOrder: string[];
   wakeLockActive: boolean;
 }
 
@@ -52,11 +53,7 @@ interface SummaryRow {
  * @returns Nothing.
  */
 export function renderApp(model: AppViewModel): void {
-  const primaryWarning = model.emulatorActive || model.lastEvaluation?.primary
-    ? buildPrimaryWarning(model.lastEvaluation?.primary ?? null, model.aircraftState)
-    : 'EMULATOR STOPPED';
-  setText('primaryWarning', primaryWarning);
-  getElement('primaryWarning').classList.toggle('active', Boolean(model.lastEvaluation?.primary));
+  renderWarningCalls(model);
   setText('emulatorState', model.emulatorActive ? 'ACTIVE' : 'STOPPED');
   getElement('emulatorState').classList.toggle('active', model.emulatorActive);
   updateEvaluationCountdown(model);
@@ -98,6 +95,33 @@ export function renderApp(model: AppViewModel): void {
   stayAwakeButton.textContent = model.wakeLockActive ? 'Allow sleep' : 'Stay awake';
   stayAwakeButton.setAttribute('aria-pressed', String(model.wakeLockActive));
   stayAwakeButton.classList.toggle('awake-active', model.wakeLockActive);
+}
+
+function renderWarningCalls(model: AppViewModel): void {
+  const container = getElement('warningCalls');
+  const resultsByThreatId = new Map(
+    (model.lastEvaluation?.active ?? []).map((result) => [result.threat.id, result])
+  );
+  const activeResults = model.activeThreatOrder.flatMap((id) => {
+    const result = resultsByThreatId.get(id);
+    return result ? [result] : [];
+  });
+  const fragment = document.createDocumentFragment();
+
+  if (!model.emulatorActive || activeResults.length === 0) {
+    const row = cloneTemplate<HTMLDivElement>('warningCallTemplate');
+    row.textContent = model.emulatorActive ? 'NO ACTIVE THREAT' : 'EMULATOR STOPPED';
+    fragment.append(row);
+  } else {
+    for (const result of activeResults) {
+      const row = cloneTemplate<HTMLDivElement>('warningCallTemplate');
+      row.textContent = buildThreatWarning(result, model.aircraftState);
+      row.classList.add('active');
+      fragment.append(row);
+    }
+  }
+
+  container.replaceChildren(fragment);
 }
 
 /**

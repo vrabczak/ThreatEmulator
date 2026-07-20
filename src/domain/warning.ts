@@ -37,12 +37,12 @@ export function clockCodeForThreat(aircraft: AircraftState, threat: LatLon): num
 }
 
 /**
- * Builds the primary warning displayed for the closest active threat.
- * @param result - Primary threat evaluation, or `null` when none is active.
+ * Builds one warning call for an active threat.
+ * @param result - Active threat evaluation, or `null` when none is active.
  * @param aircraft - Current aircraft state used for relative direction.
- * @returns Uppercase warning text suitable for the primary warning banner.
+ * @returns Uppercase warning text suitable for a warning row.
  */
-export function buildPrimaryWarning(
+export function buildThreatWarning(
   result: ThreatEvaluationResult | null,
   aircraft: AircraftState | null
 ): string {
@@ -63,4 +63,33 @@ export function buildPrimaryWarning(
   }
 
   return `THREAT ${clock} O'CLOCK ${rangeText}`;
+}
+
+/**
+ * Retains active threats in first-appearance order and appends newly active threats.
+ * IDs removed during an inactive evaluation are appended if they later reactivate.
+ * @param previousOrder - Active threat IDs ordered by their prior first appearance.
+ * @param results - Latest evaluation results in configured threat-list order.
+ * @returns Active threat IDs in warning-row display order.
+ */
+export function reconcileActiveThreatOrder(
+  previousOrder: readonly string[],
+  results: readonly ThreatEvaluationResult[]
+): string[] {
+  const activeIds = new Set(
+    results.filter((result) => result.state === 'active').map((result) => result.threat.id)
+  );
+  const nextOrder = previousOrder.filter((id) => activeIds.has(id));
+  const retainedIds = new Set(nextOrder);
+
+  // Evaluation order is the deterministic tie-breaker when threats first activate together.
+  for (const result of results) {
+    const id = result.threat.id;
+    if (result.state === 'active' && !retainedIds.has(id)) {
+      nextOrder.push(id);
+      retainedIds.add(id);
+    }
+  }
+
+  return nextOrder;
 }

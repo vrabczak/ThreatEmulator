@@ -4,7 +4,11 @@
  */
 
 import { deriveTrackFromFixes, resolveTrack } from './track';
-import { buildPrimaryWarning, clockCodeFromRelativeBearing } from './warning';
+import {
+  buildThreatWarning,
+  clockCodeFromRelativeBearing,
+  reconcileActiveThreatOrder
+} from './warning';
 import type { AircraftState, ThreatEvaluationResult } from './types';
 
 describe('track handling', () => {
@@ -68,16 +72,51 @@ describe('warning call', () => {
     expect(clockCodeFromRelativeBearing(270)).toBe(9);
   });
 
-  it('builds primary warning text', () => {
-    expect(buildPrimaryWarning(activeResult, aircraft)).toBe("THREAT 3 O'CLOCK 7 KM");
-    expect(buildPrimaryWarning(activeResult, { ...aircraft, trackDegrees: null })).toBe(
+  it('builds threat warning text', () => {
+    expect(buildThreatWarning(activeResult, aircraft)).toBe("THREAT 3 O'CLOCK 7 KM");
+    expect(buildThreatWarning(activeResult, { ...aircraft, trackDegrees: null })).toBe(
       'THREAT ALPHA 7 KM TRACK UNAVAILABLE'
     );
     expect(
-      buildPrimaryWarning(
+      buildThreatWarning(
         { ...activeResult, threat: { ...activeResult.threat, name: '' } },
         { ...aircraft, trackDegrees: null }
       )
     ).toBe('THREAT T001 7 KM TRACK UNAVAILABLE');
+  });
+
+  it('keeps first-appearance order and appends a reactivated threat', () => {
+    const secondResult: ThreatEvaluationResult = {
+      ...activeResult,
+      threat: { ...activeResult.threat, id: 'T002' }
+    };
+    const thirdResult: ThreatEvaluationResult = {
+      ...activeResult,
+      threat: { ...activeResult.threat, id: 'T003' }
+    };
+
+    const firstOrder = reconcileActiveThreatOrder([], [activeResult, secondResult]);
+    expect(firstOrder).toEqual(['T001', 'T002']);
+
+    const afterThirdAppears = reconcileActiveThreatOrder(firstOrder, [
+      secondResult,
+      activeResult,
+      thirdResult
+    ]);
+    expect(afterThirdAppears).toEqual(['T001', 'T002', 'T003']);
+
+    const afterFirstDisappears = reconcileActiveThreatOrder(afterThirdAppears, [
+      { ...activeResult, state: 'inactive' },
+      secondResult,
+      thirdResult
+    ]);
+    expect(afterFirstDisappears).toEqual(['T002', 'T003']);
+
+    const afterFirstReappears = reconcileActiveThreatOrder(afterFirstDisappears, [
+      activeResult,
+      secondResult,
+      thirdResult
+    ]);
+    expect(afterFirstReappears).toEqual(['T002', 'T003', 'T001']);
   });
 });

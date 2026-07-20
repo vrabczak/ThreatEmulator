@@ -23,8 +23,8 @@ The application runs entirely in the browser, uses user-selected local files and
 - With a loaded elevation model, line of sight uses a flat-earth terrain obstruction check. Without one, all threats are assumed to have clear line of sight and horizontal range is the only activation factor. Earth curvature and atmospheric refraction are out of scope for V1.
 - The emulator evaluates threats every 3 seconds while active.
 - Warnings are visual only.
-- The primary warning is a large text message.
-- If multiple threats are active, the closest threat has priority.
+- Every active threat has its own large text warning row.
+- Warning rows retain first-appearance order while active; a reactivated threat is appended as a new row.
 - Distance is displayed using standard threat range buckets: 100m through 900m in
   100m steps, then 1km, 1.5km, 2km, and whole-kilometer buckets from 3km upward.
 - V1 includes a collapsible Leaflet map showing the latest aircraft position, all threat positions, and each threat's effective-range circle.
@@ -68,7 +68,7 @@ Final library selection should be confirmed during implementation, especially fo
 8. App starts receiving aircraft GNSS fixes from the iPad.
 9. User activates the emulator after at least one valid threat exists.
 10. Every 3 seconds, the app evaluates the latest aircraft state against the current working threat list.
-11. If one or more threats are active, the app displays a large visual warning for the closest active threat.
+11. If one or more threats are active, the app displays one large visual warning row per active threat in first-appearance order.
 12. User can stop the emulator, import a replacement CSV, add/edit/delete individual threats, or export the current non-empty list.
 13. User can see aircraft latitude/longitude, GPS altitude, height above ground level, GPS precision, and track status.
 14. User can expand the Map panel to view the aircraft, threats, and threat effective ranges and select OpenStreetMap, OpenTopoMap, or configured Google satellite imagery. The app shows the selected tiles while online and an overlay-only grid while offline.
@@ -193,7 +193,7 @@ Threat states:
 - `aircraft state unavailable`: Current GNSS position, altitude, or track is unavailable.
 - `invalid`: Threat row failed validation.
 
-If multiple threats are active, the closest active threat has display priority.
+If multiple threats are active, all of their calls are displayed. Existing active calls keep their first-appearance order. A threat removed from the active set loses its position; if it becomes active again, its call is appended after the calls that remained active. When multiple threats are first detected during the same evaluation, configured threat-list order is the deterministic tie-breaker.
 
 ## Line-Of-Sight Calculation
 
@@ -248,8 +248,10 @@ Distance formatting:
 
 Multiple active threats:
 
-- Closest active threat is shown as the primary warning.
-- Secondary active threats may be shown in a smaller status list if the UI remains clear on iPad mini.
+- Show one equally prominent warning row for every active threat.
+- Keep rows in first-appearance order while threats remain continuously active.
+- Remove an inactive threat's row immediately; append its row at the bottom if it later reactivates.
+- Use configured threat-list order when multiple threats first activate in the same evaluation.
 
 ## User Interface
 
@@ -268,7 +270,7 @@ Required controls and displays:
 - Current aircraft latitude, longitude, GPS altitude, calculated AGL, and GPS track.
 - Start / stop emulator control.
 - Current evaluation status.
-- Large primary warning text.
+- Large warning text row for every active threat.
 - Threat validation/status summary.
 - Separate collapsible aircraft status and threat table panels, collapsed by default. The threat table uses two-line ID/description, distance/range, LOS/state, and actions columns. Activation conditions are color-coded: in-range distance, VLOS, and active state are green; out-of-range distance, BLOS, and inactive state are red. Values not yet evaluated use neutral placeholders, while unavailable states are amber.
 - A separate collapsible Map panel, collapsed by default, containing:
@@ -370,7 +372,7 @@ Automated tests should cover:
 - Line-of-sight blocked and clear cases.
 - No-elevation-model behavior where LOS is assumed clear and range is the only activation factor.
 - Threat activation logic.
-- Closest-threat prioritization.
+- Multiple-active-threat warning count and first-appearance ordering, including reactivation at the end.
 
 Manual test fixtures should include:
 
@@ -380,12 +382,3 @@ Manual test fixtures should include:
 - Online and offline Map panel checks confirming that OpenStreetMap, OpenTopoMap, and configured Google satellite selection follows connectivity while aircraft markers, threat markers, range circles, tooltips, and controls remain available in both modes.
 
 The repository should include the sample CSV fixture only. Large GeoTIFF fixtures should not be committed.
-
-## Remaining Open Questions
-
-1. Which iPad mini generation and iPadOS/Safari version must be supported?
-2. Should GPS track come directly from browser geolocation `coords.heading`, be calculated from successive position fixes, or use both with fallback logic?
-3. What should the warning display when GPS track is temporarily unavailable or the aircraft is moving too slowly for a reliable track?
-4. Should there be a manual GPS altitude offset or calibration option if iPad altitude and GeoTIFF MSL elevations do not align well enough?
-5. What maximum acceptable line-of-sight error is acceptable for V1?
-6. Are the large elevation files standard GeoTIFF, BigTIFF, Cloud Optimized GeoTIFF, or unknown?

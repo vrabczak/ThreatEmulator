@@ -1,5 +1,5 @@
 /**
- * Verifies terrain sampling, line-of-sight states, AGL fallback, and threat prioritization.
+ * Verifies terrain sampling, line-of-sight states, AGL fallback, and threat activation.
  * Tests use deterministic aircraft/threat fixtures and an in-memory TerrainService double.
  */
 
@@ -167,7 +167,7 @@ describe('threat evaluation', () => {
     ).toBeNull();
   });
 
-  it('prioritizes the closest active threat', async () => {
+  it('returns every active threat in configured order', async () => {
     const terrain = createMockTerrainService({ status: 'clear', sampleCount: 3 });
     const fartherThreat = { ...closeThreat, id: 'T002', name: 'Farther', longitude: 14.06, rangeKm: 10 };
 
@@ -176,7 +176,7 @@ describe('threat evaluation', () => {
     });
 
     expect(result.results).toHaveLength(2);
-    expect(result.primary?.threat.id).toBe('T001');
+    expect(result.active.map((item) => item.threat.id)).toEqual(['T002', 'T001']);
   });
 
   it('marks out-of-range threats inactive before LOS', async () => {
@@ -217,7 +217,7 @@ describe('threat evaluation', () => {
       state: 'inactive',
       lineOfSight: { status: 'clear', sampleCount: 0 }
     });
-    expect(result.primary?.threat.id).toBe('T001');
+    expect(result.active.map((item) => item.threat.id)).toEqual(['T001']);
   });
 
   it('does not create false warnings when terrain is unavailable', async () => {
@@ -228,7 +228,7 @@ describe('threat evaluation', () => {
     }, createTerrainMetadata());
     const result = await evaluateThreats([closeThreat], aircraft, terrain);
 
-    expect(result.primary).toBeNull();
+    expect(result.active).toEqual([]);
     expect(result.results[0].state).toBe('terrain unavailable');
   });
 

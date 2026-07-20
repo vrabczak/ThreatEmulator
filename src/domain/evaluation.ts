@@ -25,12 +25,12 @@ export const MINIMUM_CALCULATED_AGL_M = 15;
 export const LOW_AGL_FALLBACK_M = 50 / 3.280839895;
 
 /**
- * Evaluates every threat and selects the closest active threat as the primary warning.
+ * Evaluates every threat and collects all active threats in configured threat-list order.
  * @param threats - Current threat definitions in display order.
  * @param aircraft - Current aircraft state, or `null` before a GNSS fix is available.
  * @param terrain - Terrain service used for metadata and line-of-sight requests.
  * @param options - Optional evaluation timestamp and LOS sampling override.
- * @returns The ordered per-threat results and primary active result.
+ * @returns The ordered per-threat results and active results.
  * @throws {Error} When the terrain service rejects a line-of-sight request.
  */
 export async function evaluateThreats(
@@ -124,12 +124,11 @@ export async function evaluateThreats(
   }
 
   const finalResults = results.filter((result): result is ThreatEvaluationResult => result !== null);
-  const primary =
-    finalResults
-      .filter((result) => result.state === 'active' && result.distanceKm !== null)
-      .sort((left, right) => (left.distanceKm as number) - (right.distanceKm as number))[0] ?? null;
+  const active = finalResults.filter(
+    (result) => result.state === 'active' && result.distanceKm !== null
+  );
 
-  return { evaluatedAtMs, results: finalResults, primary };
+  return { evaluatedAtMs, results: finalResults, active };
 }
 
 function deriveTerrainSampleSpacingM(

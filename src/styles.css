@@ -119,6 +119,11 @@ input {
   animation: evaluation-updated 0.9s ease-out;
 }
 
+.warning-calls {
+  display: grid;
+  gap: 0.65rem;
+}
+
 .warning-text {
   width: 100%;
   min-height: 6.5rem;

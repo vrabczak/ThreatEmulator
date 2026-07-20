@@ -15,7 +15,7 @@ The app is built with TypeScript, Vite, Vitest, Leaflet, `geotiff`, `papaparse`,
 - Can remember a local GeoTIFF through a persistent file handle on compatible browsers.
 - Converts browser WGS84 ellipsoid altitude to EGM96 orthometric MSL altitude, then calculates height above ground from local terrain elevation.
 - Evaluates threats every 3 seconds while the emulator is active.
-- Prioritizes the closest active threat.
+- Shows one equally prominent warning call for every active threat in first-appearance order.
 - Shows aircraft position, GPS altitude, height above ground, precision, track, validation status, and evaluation results.
 - Shows aircraft and threat positions with effective-range circles in a collapsible Leaflet map.
 - Lets the user choose OpenStreetMap, OpenTopoMap, or optionally Google satellite imagery while online, and keeps the map overlays available over a neutral grid when offline.
@@ -66,8 +66,9 @@ npm run preview
 4. Grant browser geolocation permission when prompted.
 5. Wait for an aircraft position with GPS altitude.
 6. Start the emulator.
-7. Expand the collapsed Aircraft Status, Threats, and Map panels as needed. The threat table is available before the emulator starts and shows each threat's ID/description, distance/range, LOS/state, and edit/delete actions.
-8. In the Map panel, choose OpenStreetMap, OpenTopoMap, or Google satellite as the base map. Red markers identify threats, red circles show their effective ranges, and the blue directional marker identifies the latest aircraft position. Online tiles disappear while offline, but the same overlays remain usable over a neutral grid.
+7. Read each active threat call in the warning area. Calls retain activation order while active; a threat that becomes inactive and later reactivates returns at the bottom. Threats first detected together use threat-list order.
+8. Expand the collapsed Aircraft Status, Threats, and Map panels as needed. The threat table is available before the emulator starts and shows each threat's ID/description, distance/range, LOS/state, and edit/delete actions.
+9. In the Map panel, choose OpenStreetMap, OpenTopoMap, or Google satellite as the base map. Red markers identify threats, red circles show their effective ranges, and the blue directional marker identifies the latest aircraft position. Online tiles disappear while offline, but the same overlays remain usable over a neutral grid.
 
 ### Google satellite configuration
 
@@ -131,7 +132,7 @@ For each valid threat, the emulator:
 2. Marks the threat inactive when the aircraft is outside `range_km`.
 3. Treats magic threats as always having clear line of sight. For other in-range threats, runs a flat-earth terrain line-of-sight check when an elevation model is loaded; otherwise assumes line of sight is clear.
 4. Marks the threat active when line of sight is clear.
-5. Builds the primary warning from the closest active threat.
+5. Builds one warning call for every active threat. Continuously active calls retain first-appearance order, while a reactivated threat is appended after them.
 
 GNSS fixes are published to threat evaluation atomically after their EGM96 conversion finishes. While a newer fix is being converted, the previous fully converted aircraft state remains available, so the 3-second evaluation does not skip LOS merely because conversion is in progress.
 

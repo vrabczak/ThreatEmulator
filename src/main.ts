@@ -6,6 +6,7 @@
 import { registerSW } from 'virtual:pwa-register';
 import { parseThreatCsvFile, serializeThreatCsv } from './domain/csv';
 import { calculateAgl, evaluateThreats, resolveTerrainElevationM } from './domain/evaluation';
+import { reconcileActiveThreatOrder } from './domain/warning';
 import { Egm96GeoidModel } from './domain/geoid';
 import { GeolocationTracker, type GeolocationStatus } from './services/geolocation';
 import {
@@ -58,6 +59,7 @@ let countdownTimer: number | null = null;
 let nextEvaluationAtMs: number | null = null;
 let evaluationInFlight = false;
 let lastEvaluation: ThreatEvaluationSummary | null = null;
+let activeThreatOrder: string[] = [];
 
 const geolocationTracker = new GeolocationTracker(
   (state) => {
@@ -172,6 +174,8 @@ function commitThreatChange(message: string): void {
   threatsModified = true;
   threatRevision += 1;
   lastEvaluation = null;
+  const currentThreatIds = new Set(threats.map((threat) => threat.id));
+  activeThreatOrder = activeThreatOrder.filter((id) => currentThreatIds.has(id));
 
   if (emulatorActive && threats.length === 0) {
     stopEmulator(`${message} Emulator stopped because no threats remain.`);
@@ -196,6 +200,7 @@ async function loadCsv(file: File): Promise<void> {
   threatsModified = false;
   threatRevision += 1;
   lastEvaluation = null;
+  activeThreatOrder = [];
   threatEditorController.close();
 
   if (csvResult.errors.length > 0) {
@@ -351,6 +356,7 @@ function startEmulator(): void {
   }
 
   emulatorActive = true;
+  activeThreatOrder = [];
   setMessage('Emulator active. Threats evaluate every 3 seconds.', 'normal');
   nextEvaluationAtMs = Date.now() + EVALUATION_INTERVAL_MS;
   void evaluateNow();
@@ -401,6 +407,7 @@ async function evaluateNow(): Promise<void> {
       return;
     }
     lastEvaluation = evaluation;
+    activeThreatOrder = reconcileActiveThreatOrder(activeThreatOrder, evaluation.results);
     evaluationCompleted = true;
     const activeCount = lastEvaluation.results.filter((result) => result.state === 'active').length;
     const evaluationMessage = activeCount > 0
@@ -535,6 +542,7 @@ function render(): void {
     evaluationInFlight,
     nextEvaluationAtMs,
     lastEvaluation,
+    activeThreatOrder,
     wakeLockActive: wakeLockController.active
   });
   threatEditorController.refreshPositionFields();

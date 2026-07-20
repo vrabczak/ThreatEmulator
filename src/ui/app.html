@@ -12,7 +12,9 @@
   </header>
 
   <section id="warningBand" class="warning-band">
-    <div id="primaryWarning" class="warning-text" aria-live="polite">NO ACTIVE THREAT</div>
+    <div id="warningCalls" class="warning-calls" aria-live="polite">
+      <div class="warning-text">NO ACTIVE THREAT</div>
+    </div>
     <div class="evaluation-timing" aria-label="Threat calculation status">
       <span id="evaluationPulse" class="evaluation-pulse" aria-hidden="true"></span>
       <span id="evaluationCountdown">Updates stopped</span>
@@ -191,6 +193,10 @@
 
 <template id="summaryRowTemplate">
   <div class="summary-row"><span data-field="label"></span><strong data-field="value"></strong></div>
+</template>
+
+<template id="warningCallTemplate">
+  <div class="warning-text"></div>
 </template>
 
 <template id="emptyThreatRowTemplate">

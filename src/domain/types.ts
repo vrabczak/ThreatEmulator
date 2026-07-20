@@ -130,7 +130,7 @@ export interface ThreatEvaluationResult {
 export interface ThreatEvaluationSummary {
   evaluatedAtMs: number;
   results: ThreatEvaluationResult[];
-  primary: ThreatEvaluationResult | null;
+  active: ThreatEvaluationResult[];
 }
 
 export interface TerrainService {
