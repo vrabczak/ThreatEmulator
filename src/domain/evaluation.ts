@@ -1,3 +1,8 @@
+/**
+ * Combines aircraft state, threat range, and terrain line of sight into warning evaluations.
+ * Terrain work is batched through the TerrainService and assumes all altitudes are MSL meters.
+ */
+
 import { distanceMeters, formatKilometers } from './geo';
 import { DEFAULT_MAX_LOS_SAMPLE_SPACING_M, calculateTerrainSampleSpacingM } from './los';
 import type {
@@ -19,6 +24,15 @@ export interface ThreatEvaluationOptions {
 export const MINIMUM_CALCULATED_AGL_M = 15;
 export const LOW_AGL_FALLBACK_M = 50 / 3.280839895;
 
+/**
+ * Evaluates every threat and selects the closest active threat as the primary warning.
+ * @param threats - Current threat definitions in display order.
+ * @param aircraft - Current aircraft state, or `null` before a GNSS fix is available.
+ * @param terrain - Terrain service used for metadata and line-of-sight requests.
+ * @param options - Optional evaluation timestamp and LOS sampling override.
+ * @returns The ordered per-threat results and primary active result.
+ * @throws {Error} When the terrain service rejects a line-of-sight request.
+ */
 export async function evaluateThreats(
   threats: Threat[],
   aircraft: AircraftState | null,
@@ -88,6 +102,7 @@ export async function evaluateThreats(
           options.maxLosSampleSpacingM ??
           deriveTerrainSampleSpacingM(terrainMetadata, aircraft, pendingLos)
       };
+      // Batch worker traffic to avoid a main-thread round trip for every in-range threat.
       const batchResults = await terrain.evaluateLineOfSightBatch(
         aircraft,
         pendingLos.map((pending) => pending.threat),
@@ -134,6 +149,12 @@ function deriveTerrainSampleSpacingM(
   return Number.isFinite(spacingM) ? spacingM : DEFAULT_MAX_LOS_SAMPLE_SPACING_M;
 }
 
+/**
+ * Calculates aircraft height above terrain with the configured low-altitude fallback.
+ * @param gpsAltitudeM - Aircraft orthometric altitude in meters.
+ * @param terrainElevationM - Terrain elevation in meters MSL.
+ * @returns Height AGL in meters, the low-altitude fallback, or `null` when an input is missing.
+ */
 export function calculateAgl(gpsAltitudeM: number | null, terrainElevationM: number | null): number | null {
   if (gpsAltitudeM === null || terrainElevationM === null) {
     return null;
@@ -143,6 +164,12 @@ export function calculateAgl(gpsAltitudeM: number | null, terrainElevationM: num
   return calculatedAglM < MINIMUM_CALCULATED_AGL_M ? LOW_AGL_FALLBACK_M : calculatedAglM;
 }
 
+/**
+ * Retains the last valid aircraft terrain elevation when a new terrain sample is unavailable.
+ * @param sample - Latest terrain sampling result.
+ * @param lastRetrievedElevationM - Previously retrieved valid elevation, if any.
+ * @returns The latest valid elevation or the supplied fallback.
+ */
 export function resolveTerrainElevationM(
   sample: TerrainSample,
   lastRetrievedElevationM: number | null

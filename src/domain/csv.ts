@@ -1,3 +1,8 @@
+/**
+ * Imports, validates, and exports the semicolon-delimited threat CSV format.
+ * Parsing uses Papa Parse; decimal fields accept either a dot or comma separator.
+ */
+
 import Papa from 'papaparse';
 import {
   MAX_CSV_FILE_SIZE_BYTES,
@@ -10,6 +15,12 @@ import {
 type CsvRow = Record<string, string>;
 const THREAT_CSV_COLUMNS = ['id', 'name', 'latitude', 'longitude', 'height_agl_m', 'range_km'] as const;
 
+/**
+ * Reads and parses a threat CSV file after enforcing the configured size limit.
+ * @param file - Browser file selected for import.
+ * @returns Parsed threats, invalid rows, and file-level errors.
+ * @throws {Error} When the browser cannot read the file contents.
+ */
 export async function parseThreatCsvFile(file: File): Promise<ThreatCsvResult> {
   if (file.size > MAX_CSV_FILE_SIZE_BYTES) {
     return {
@@ -24,6 +35,13 @@ export async function parseThreatCsvFile(file: File): Promise<ThreatCsvResult> {
   return parseThreatCsvText(await file.text(), file.name, file.size);
 }
 
+/**
+ * Parses and validates threat CSV text.
+ * @param text - Semicolon-delimited CSV content.
+ * @param fileName - Source name included in the result.
+ * @param fileSize - Source size in bytes included in the result.
+ * @returns Parsed threats, invalid rows, and file-level errors.
+ */
 export function parseThreatCsvText(
   text: string,
   fileName = 'inline.csv',
@@ -77,6 +95,11 @@ export function parseThreatCsvText(
   return { fileName, fileSize, threats, invalidRows, errors };
 }
 
+/**
+ * Serializes threats into the canonical semicolon-delimited CSV schema.
+ * @param threats - Threats to export in their current order.
+ * @returns CSV text with a header and CRLF-separated records.
+ */
 export function serializeThreatCsv(threats: Threat[]): string {
   const rows = threats.map((threat) => [
     threat.id,
@@ -143,6 +166,11 @@ function normalizeText(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+/**
+ * Parses a strict decimal value while accepting dot or comma fractional separators.
+ * @param value - Candidate string or number.
+ * @returns A finite number, or `null` when the input is not a supported decimal representation.
+ */
 export function parseDecimal(value: unknown): number | null {
   if (typeof value !== 'string' && typeof value !== 'number') {
     return null;

@@ -1,3 +1,6 @@
+# Builds and deploys the static Threat Emulator PWA to GitHub Pages.
+# The workflow assumes npm lockfile installs and Pages deployment from the main branch.
+
 name: Deploy static content to Pages
 
 on:

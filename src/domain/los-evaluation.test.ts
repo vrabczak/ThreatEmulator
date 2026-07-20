@@ -1,3 +1,8 @@
+/**
+ * Verifies terrain sampling, line-of-sight states, AGL fallback, and threat prioritization.
+ * Tests use deterministic aircraft/threat fixtures and an in-memory TerrainService double.
+ */
+
 import { calculateAgl, evaluateThreats, resolveTerrainElevationM } from './evaluation';
 import {
   calculateTerrainSampleSpacingM,

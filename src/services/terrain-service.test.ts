@@ -1,19 +1,37 @@
+/**
+ * Verifies request correlation, cancellation, and worker lifecycle in WorkerTerrainService.
+ * A synchronous fake Worker exposes posted protocol messages and injects typed responses.
+ */
+
 import { WorkerTerrainService } from './terrain-service';
 import type { TerrainWorkerRequest, TerrainWorkerResponse } from '../workers/terrain-worker-protocol';
 
+/**
+ * Minimal controllable Worker test double for the terrain-service protocol.
+ * Posted messages remain available until each test responds; termination state is retained.
+ */
 class FakeWorker {
   onmessage: ((event: MessageEvent<TerrainWorkerResponse>) => void) | null = null;
   readonly posted: TerrainWorkerRequest[] = [];
   terminated = false;
 
+  /**
+   * Records a message sent by the service.
+   * @param message - Typed terrain-worker request.
+   */
   postMessage(message: TerrainWorkerRequest): void {
     this.posted.push(message);
   }
 
+  /** Marks the fake worker as terminated. */
   terminate(): void {
     this.terminated = true;
   }
 
+  /**
+   * Delivers a typed worker response to the service handler.
+   * @param response - Response to expose as message-event data.
+   */
   emit(response: TerrainWorkerResponse): void {
     this.onmessage?.({ data: response } as MessageEvent<TerrainWorkerResponse>);
   }

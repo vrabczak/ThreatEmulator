@@ -1,3 +1,8 @@
+/**
+ * Renders aircraft and threat overlays on a Leaflet map with selectable online base layers.
+ * Google imagery is loaded lazily and requires a Vite-provided API key plus network connectivity.
+ */
+
 import L, { type Layer, type LayerGroup, type Map as LeafletMap } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import googleMutantScriptUrl from 'leaflet.gridlayer.googlemutant/dist/Leaflet.GoogleMutant.js?url';
@@ -10,6 +15,10 @@ const GOOGLE_MUTANT_SCRIPT_ID = 'leaflet-google-mutant';
 
 export type BaseMapId = 'street' | 'topographic' | 'google-satellite';
 
+/**
+ * Owns the Leaflet map, overlays, base-layer cache, and automatic data fitting behavior.
+ * Initialization is idempotent; layer revisions prevent stale asynchronous loads from becoming active.
+ */
 export class ThreatMap {
   private map: LeafletMap | null = null;
   private overlays: LayerGroup | null = null;
@@ -21,6 +30,11 @@ export class ThreatMap {
   private lastFittedDataSignature = '';
   private readonly googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY?.trim() ?? '';
 
+  /**
+   * Initializes the map once or refreshes an already initialized map's connectivity and size.
+   * @param container - DOM element that hosts Leaflet.
+   * @param online - Whether online base-layer requests are currently allowed.
+   */
   initialize(container: HTMLElement, online: boolean): void {
     if (this.map) {
       this.online = online;
@@ -36,10 +50,21 @@ export class ThreatMap {
     this.online = online;
   }
 
+  /**
+   * Reports whether Google satellite imagery is configured.
+   * @returns Whether a non-empty Google Maps API key is available.
+   */
   hasGoogleImagery(): boolean {
     return this.googleMapsApiKey.length > 0;
   }
 
+  /**
+   * Selects the desired base map and applies it when the browser is online.
+   * @param baseMap - Base-map provider to select.
+   * @param online - Whether online tile/script loading is currently allowed.
+   * @returns A promise that settles after the layer is loaded, applied, or superseded.
+   * @throws {Error} When Google imagery lacks an API key or a provider script cannot load.
+   */
   async setBaseMap(baseMap: BaseMapId, online: boolean): Promise<void> {
     if (baseMap === 'google-satellite' && !this.hasGoogleImagery()) {
       throw new Error('Google satellite requires VITE_GOOGLE_MAPS_API_KEY.');
@@ -47,6 +72,7 @@ export class ThreatMap {
 
     this.selectedBaseMap = baseMap;
     this.online = online;
+    // Later selections invalidate slow provider loads so an obsolete layer cannot win the race.
     const revision = ++this.baseLayerRevision;
 
     if (!this.map) {
@@ -74,6 +100,11 @@ export class ThreatMap {
     this.activeBaseLayer = layer;
   }
 
+  /**
+   * Rebuilds map overlays from current aircraft and threat state.
+   * @param aircraft - Current aircraft state, or `null` before a fix is available.
+   * @param threats - Threats to draw with markers and effective-range circles.
+   */
   update(aircraft: AircraftState | null, threats: Threat[]): void {
     if (!this.map || !this.overlays) {
       return;
@@ -116,6 +147,7 @@ export class ThreatMap {
       bounds.extend(position);
     }
 
+    // Refit only when source data changes so periodic redraws do not override user map navigation.
     const dataSignature = `${aircraft ? 'aircraft' : 'no-aircraft'}|${threats
       .map((threat) => `${threat.id}:${threat.latitude}:${threat.longitude}:${threat.rangeKm}`)
       .join('|')}`;
@@ -127,6 +159,7 @@ export class ThreatMap {
     }
   }
 
+  /** Invalidates Leaflet's cached container size without panning the map. */
   invalidateSize(): void {
     this.map?.invalidateSize({ pan: false });
   }

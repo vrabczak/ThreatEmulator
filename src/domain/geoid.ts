@@ -1,3 +1,8 @@
+/**
+ * Converts GNSS ellipsoid heights to mean sea level with the bundled EGM96 geoid grid.
+ * The grid is fetched through Vite as a big-endian, quarter-degree DAC asset and cached per model.
+ */
+
 import egm96GridUrl from 'egm96/WW15MGH.DAC?url';
 
 const GRID_INTERVAL_DEGREES = 0.25;
@@ -7,6 +12,14 @@ const GRID_SIZE_BYTES = GRID_ROWS * GRID_COLUMNS * Int16Array.BYTES_PER_ELEMENT;
 
 export type GeoidGridReader = (row: number, column: number) => number;
 
+/**
+ * Bilinearly interpolates an EGM96 geoid height from neighboring quarter-degree grid posts.
+ * @param latitude - WGS84 latitude in degrees.
+ * @param longitude - WGS84 longitude in degrees; values wrap around the antimeridian.
+ * @param readHeightM - Callback that returns a grid-post height in meters.
+ * @returns Interpolated geoid height in meters.
+ * @throws {RangeError} When latitude or longitude is non-finite, or latitude is outside [-90, 90].
+ */
 export function interpolateEgm96GeoidHeightM(
   latitude: number,
   longitude: number,
@@ -16,6 +29,7 @@ export function interpolateEgm96GeoidHeightM(
     throw new RangeError('Latitude and longitude must be finite WGS84 coordinates.');
   }
 
+  // EGM96 rows run north-to-south while columns wrap eastward across the antimeridian.
   const normalizedLongitude = ((longitude % 360) + 360) % 360;
   const rowPosition = (90 - latitude) / GRID_INTERVAL_DEGREES;
   const columnPosition = normalizedLongitude / GRID_INTERVAL_DEGREES;
@@ -26,6 +40,7 @@ export function interpolateEgm96GeoidHeightM(
   const latitudeFraction = rowPosition - topRow;
   const longitudeFraction = columnPosition - Math.floor(columnPosition);
 
+  // Interpolate east-west on both bounding rows, then north-south between those results.
   const top =
     readHeightM(topRow, leftColumn) * (1 - longitudeFraction) +
     readHeightM(topRow, rightColumn) * longitudeFraction;
@@ -36,13 +51,31 @@ export function interpolateEgm96GeoidHeightM(
   return top * (1 - latitudeFraction) + bottom * latitudeFraction;
 }
 
+/**
+ * Converts an ellipsoid height to orthometric mean-sea-level height.
+ * @param ellipsoidHeightM - Height above the reference ellipsoid in meters.
+ * @param geoidHeightM - EGM96 geoid separation in meters.
+ * @returns Orthometric height above mean sea level in meters.
+ */
 export function ellipsoidHeightToMslM(ellipsoidHeightM: number, geoidHeightM: number): number {
   return ellipsoidHeightM - geoidHeightM;
 }
 
+/**
+ * Lazily loads and queries the bundled EGM96 grid for altitude conversion.
+ * A single in-flight or fulfilled grid promise is retained for the lifetime of each instance.
+ */
 export class Egm96GeoidModel {
   private gridPromise: Promise<DataView> | null = null;
 
+  /**
+   * Looks up the interpolated geoid separation at a WGS84 position.
+   * @param latitude - WGS84 latitude in degrees.
+   * @param longitude - WGS84 longitude in degrees.
+   * @returns Geoid separation in meters.
+   * @throws {Error} When the grid cannot be fetched or has an unexpected byte length.
+   * @throws {RangeError} When the coordinates are invalid.
+   */
   async geoidHeightM(latitude: number, longitude: number): Promise<number> {
     const grid = await this.loadGrid();
     return interpolateEgm96GeoidHeightM(
@@ -52,6 +85,14 @@ export class Egm96GeoidModel {
     );
   }
 
+  /**
+   * Converts a GNSS ellipsoid height to EGM96 mean-sea-level height at a position.
+   * @param ellipsoidHeightM - Height above the reference ellipsoid in meters.
+   * @param latitude - WGS84 latitude in degrees.
+   * @param longitude - WGS84 longitude in degrees.
+   * @returns Orthometric height above mean sea level in meters.
+   * @throws {Error} When the grid cannot be loaded or the coordinates are invalid.
+   */
   async ellipsoidHeightToMslM(
     ellipsoidHeightM: number,
     latitude: number,

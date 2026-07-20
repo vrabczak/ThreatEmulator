@@ -1,3 +1,8 @@
+/**
+ * Verifies threat-editor validation and coordinate, MGRS, and relative placement modes.
+ * Tests call the domain builder directly with representative raw form strings.
+ */
+
 import { buildThreatFromEditor, type ThreatEditorInput } from './threat-editor';
 import { distanceMeters } from './geo';
 

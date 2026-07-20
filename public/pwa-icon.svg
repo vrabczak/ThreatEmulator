@@ -1,3 +1,7 @@
+<!--
+  Provides the scalable install icon used by the Threat Emulator PWA manifest.
+  The self-contained vector has no external font, image, or stylesheet dependencies.
+-->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Threat Emulator icon">
   <rect width="512" height="512" rx="96" fill="#111827"/>
   <circle cx="256" cy="256" r="176" fill="none" stroke="#f8fafc" stroke-width="28"/>

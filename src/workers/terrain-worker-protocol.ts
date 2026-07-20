@@ -1,3 +1,8 @@
+/**
+ * Defines serializable messages exchanged by the main thread and terrain web worker.
+ * Every request and response carries a correlation ID; payloads use shared domain contracts.
+ */
+
 import type {
   AircraftState,
   LineOfSightOptions,

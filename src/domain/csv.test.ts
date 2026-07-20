@@ -1,3 +1,8 @@
+/**
+ * Verifies threat CSV parsing, row validation, decimal handling, and serialization.
+ * Tests exercise the public CSV domain API with browser-compatible Blob sizing.
+ */
+
 import { parseDecimal, parseThreatCsvText, serializeThreatCsv } from './csv';
 import type { Threat } from './types';
 

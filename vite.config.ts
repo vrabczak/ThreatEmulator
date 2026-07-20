@@ -1,3 +1,8 @@
+/**
+ * Configures Vite, Vitest typing, GitHub Pages base paths, and offline PWA asset caching.
+ * Deployment base detection assumes GitHub exposes the standard GITHUB_REPOSITORY variable.
+ */
+
 /// <reference types="vitest" />
 import { defineConfig } from 'vitest/config';
 import { VitePWA } from 'vite-plugin-pwa';

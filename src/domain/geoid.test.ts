@@ -1,3 +1,8 @@
+/**
+ * Verifies EGM96 interpolation, longitude wrapping, and ellipsoid-to-MSL conversion.
+ * Tests inject small synthetic grid readers instead of loading the bundled geoid asset.
+ */
+
 import { ellipsoidHeightToMslM, interpolateEgm96GeoidHeightM } from './geoid';
 
 describe('EGM96 geoid conversion', () => {

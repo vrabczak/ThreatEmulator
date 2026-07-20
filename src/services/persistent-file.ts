@@ -1,3 +1,8 @@
+/**
+ * Persists a user-approved GeoTIFF file handle for restoration across browser sessions.
+ * This module depends on the File System Access API and IndexedDB, both of which are optional.
+ */
+
 const DATABASE_NAME = 'threat-emulator-persistent-files';
 const DATABASE_VERSION = 1;
 const STORE_NAME = 'files';
@@ -56,6 +61,10 @@ export type RestorePersistentTerrainFileResult =
 
 const READ_PERMISSION = { mode: 'read' } as const;
 
+/**
+ * Detects whether persistent file selection and handle storage are available.
+ * @returns Whether the browser exposes the required File System Access and IndexedDB APIs.
+ */
 export function supportsPersistentFilePicker(): boolean {
   return (
     typeof window !== 'undefined' &&
@@ -64,6 +73,11 @@ export function supportsPersistentFilePicker(): boolean {
   );
 }
 
+/**
+ * Prompts for one GeoTIFF and remembers its file handle for future sessions.
+ * @returns The selected file, or `null` when the picker is canceled or returns no selection.
+ * @throws {Error} When persistent selection is unsupported or the file handle cannot be read or stored.
+ */
 export async function pickPersistentTerrainFile(): Promise<File | null> {
   if (!supportsPersistentFilePicker()) {
     throw new Error('Persistent GeoTIFF restore is not supported by this browser.');
@@ -101,6 +115,12 @@ export async function pickPersistentTerrainFile(): Promise<File | null> {
   return file;
 }
 
+/**
+ * Attempts to reopen the remembered terrain file, optionally requesting read permission.
+ * @param options - Controls whether the browser may prompt to restore handle permission.
+ * @returns A discriminated restoration result describing the file or recovery action needed.
+ * @throws {Error} When IndexedDB cannot be opened or queried.
+ */
 export async function restorePersistentTerrainFile(options: {
   requestPermission: boolean;
 }): Promise<RestorePersistentTerrainFileResult> {
@@ -128,6 +148,10 @@ export async function restorePersistentTerrainFile(options: {
   }
 }
 
+/**
+ * Removes the remembered terrain file handle from persistent browser storage.
+ * @throws {Error} When IndexedDB cannot be opened or updated.
+ */
 export async function forgetPersistentTerrainFile(): Promise<void> {
   const database = await openDatabase();
   try {

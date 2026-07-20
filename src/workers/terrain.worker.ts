@@ -1,3 +1,8 @@
+/**
+ * Runs GeoTIFF loading, point sampling, and line-of-sight evaluation off the UI thread.
+ * Worker state holds one active WGS84 raster and communicates through the typed terrain protocol.
+ */
+
 import { fromBlob, type GeoTIFFImage } from 'geotiff';
 import { coordinateToPixel } from '../domain/geo';
 import { calculateTerrainSampleSpacingM, evaluateFlatEarthLineOfSight } from '../domain/los';
@@ -184,6 +189,7 @@ async function sampleElevation(latitude: number, longitude: number): Promise<Ter
   }
 
   try {
+    // A one-pixel window avoids decoding unrelated raster regions when the GeoTIFF is tiled.
     const raster = await image.readRasters({
       window: [pixel.x, pixel.y, pixel.x + 1, pixel.y + 1],
       samples: [0],
@@ -237,6 +243,7 @@ function withTerrainSampleSpacing(
     return options;
   }
 
+  // A midpoint latitude gives a representative east-west pixel scale for the complete LOS path.
   const midpointLatitude = (aircraft.latitude + threat.latitude) / 2;
   return {
     ...options,

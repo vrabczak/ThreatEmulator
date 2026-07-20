@@ -1,3 +1,8 @@
+/**
+ * Boots the single-page Threat Emulator UI and coordinates imports, GNSS, terrain, and rendering.
+ * Browser APIs, domain services, and module-level state are wired here for the lifetime of the page.
+ */
+
 import { registerSW } from 'virtual:pwa-register';
 import { parseThreatCsvFile, serializeThreatCsv } from './domain/csv';
 import { calculateAgl, evaluateThreats, resolveTerrainElevationM } from './domain/evaluation';
@@ -429,6 +434,7 @@ function exportThreats(): void {
 
   try {
     const csv = serializeThreatCsv(threats);
+    // The UTF-8 BOM keeps non-ASCII threat names intact in spreadsheet applications.
     const blob = new Blob(['\uFEFF', csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -799,6 +805,7 @@ async function evaluateNow(): Promise<void> {
   let evaluationCompleted = false;
   try {
     const evaluation = await evaluateThreats([...threats], aircraftState, terrainService);
+    // Ignore stale async results after an edit, then schedule a fresh evaluation in `finally`.
     if (evaluatedRevision !== threatRevision) {
       return;
     }
@@ -852,6 +859,7 @@ async function convertAircraftAltitudeToMsl(state: AircraftState): Promise<void>
     return;
   }
 
+  // Geoid loading/conversion is asynchronous; a newer GNSS fix must always win this race.
   if (latestAircraftFixTimestampMs !== state.timestampMs) {
     return;
   }
@@ -883,6 +891,7 @@ async function refreshAircraftAgl(state: AircraftState): Promise<void> {
       reason: error instanceof Error ? error.message : 'Unable to read aircraft terrain elevation.'
     };
   }
+  // Terrain sampling can finish out of order, so never apply AGL to a newer aircraft fix.
   if (aircraftState?.timestampMs !== state.timestampMs) {
     return;
   }

@@ -1,3 +1,8 @@
+/**
+ * Defines shared threat, aircraft, terrain, line-of-sight, and evaluation contracts.
+ * These serializable shapes cross the main-thread/worker boundary and use metric SI units.
+ */
+
 export const MAX_CSV_FILE_SIZE_BYTES = 1024 * 1024;
 
 export const REQUIRED_THREAT_COLUMNS = [
@@ -129,20 +134,61 @@ export interface ThreatEvaluationSummary {
 }
 
 export interface TerrainService {
+  /**
+   * Loads terrain data and makes it active for subsequent requests.
+   * @param file - GeoTIFF elevation file.
+   * @returns Validated metadata for the loaded terrain.
+   * @throws {Error} When the file cannot be decoded or does not meet terrain assumptions.
+   */
   loadGeoTiff(file: File): Promise<TerrainMetadata>;
+
+  /**
+   * Gets metadata for the currently loaded terrain.
+   * @returns Loaded metadata, or `null` when terrain has not been loaded.
+   */
   getMetadata(): TerrainMetadata | null;
+
+  /**
+   * Samples terrain elevation at a WGS84 position.
+   * @param latitude - Latitude in degrees.
+   * @param longitude - Longitude in degrees.
+   * @returns The elevation sample or a terrain-unavailable reason.
+   * @throws {Error} When the terrain provider rejects or cancels the request.
+   */
   sampleElevation(latitude: number, longitude: number): Promise<TerrainSample>;
+
+  /**
+   * Evaluates terrain line of sight for one threat.
+   * @param aircraft - Current aircraft state.
+   * @param threat - Threat to evaluate.
+   * @param options - Optional sampling controls.
+   * @returns The line-of-sight result.
+   * @throws {Error} When the terrain provider rejects or cancels the request.
+   */
   evaluateLineOfSight(
     aircraft: AircraftState,
     threat: Threat,
     options?: LineOfSightOptions
   ): Promise<LineOfSightResult>;
+
+  /**
+   * Evaluates terrain line of sight for multiple threats in one request.
+   * @param aircraft - Current aircraft state.
+   * @param threats - Threats to evaluate.
+   * @param options - Optional sampling controls.
+   * @returns Results associated with their threat IDs.
+   * @throws {Error} When the terrain provider rejects or cancels the request.
+   */
   evaluateLineOfSightBatch(
     aircraft: AircraftState,
     threats: Threat[],
     options?: LineOfSightOptions
   ): Promise<LineOfSightBatchResult[]>;
+
+  /** Cancels all unresolved terrain requests. */
   cancelPending(): void;
+
+  /** Releases worker resources and rejects unresolved terrain requests. */
   dispose(): void;
 }
 

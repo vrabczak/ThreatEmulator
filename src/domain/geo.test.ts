@@ -1,3 +1,8 @@
+/**
+ * Verifies spherical distance/bearing helpers, raster transforms, and warning range buckets.
+ * Assertions use representative WGS84 coordinates and north-up raster metadata.
+ */
+
 import {
   coordinateToPixel,
   distanceMeters,

@@ -1,3 +1,8 @@
+/**
+ * Derives and stabilizes aircraft track from browser headings and successive position fixes.
+ * Helpers depend on spherical geodesy and preserve a recent reliable track for short GNSS gaps.
+ */
+
 import { distanceMeters, initialBearingDegrees, normalizeDegrees, type LatLon } from './geo';
 import type { TrackSource } from './types';
 
@@ -20,10 +25,22 @@ export interface ResolvedTrack {
 export const DEFAULT_TRACK_STALE_MS = 10_000;
 export const DEFAULT_MIN_DERIVED_TRACK_DISTANCE_M = 5;
 
+/**
+ * Tests whether a browser heading can be used as a track measurement.
+ * @param heading - Candidate heading in degrees.
+ * @returns Whether the value is finite and within the browser heading range.
+ */
 export function isValidHeading(heading: number | null | undefined): heading is number {
   return typeof heading === 'number' && Number.isFinite(heading) && heading >= 0 && heading <= 360;
 }
 
+/**
+ * Derives track from two position fixes when their separation is large enough to be reliable.
+ * @param previous - Previous fix, or `null` when no history exists.
+ * @param current - Current position fix.
+ * @param minDistanceM - Minimum displacement required before deriving a bearing.
+ * @returns The derived true track in degrees, or `null` when displacement is insufficient.
+ */
 export function deriveTrackFromFixes(
   previous: PositionFix | null,
   current: PositionFix,
@@ -41,6 +58,15 @@ export function deriveTrackFromFixes(
   return initialBearingDegrees(previous, current);
 }
 
+/**
+ * Chooses the best available track and carries recent reliable track through brief gaps.
+ * @param browserHeading - Heading reported by the browser Geolocation API.
+ * @param derivedHeading - Heading derived from consecutive position fixes.
+ * @param previousReliable - Most recent reliable track, if any.
+ * @param nowMs - Timestamp used to age a retained track.
+ * @param maxStaleMs - Maximum age at which the retained track remains usable.
+ * @returns Resolved track data plus the reliable track to retain for the next fix.
+ */
 export function resolveTrack(
   browserHeading: number | null | undefined,
   derivedHeading: number | null,

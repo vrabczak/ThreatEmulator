@@ -1,3 +1,8 @@
+/*
+ * Defines the responsive application shell, controls, warnings, tables, and Leaflet markers.
+ * Styles assume the DOM structure rendered by main.ts and Leaflet's imported base stylesheet.
+ */
+
 * {
   box-sizing: border-box;
 }

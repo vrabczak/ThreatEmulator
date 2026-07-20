@@ -1,3 +1,8 @@
+/**
+ * Verifies track selection, stale-track behavior, clock directions, and warning text.
+ * Tests combine the track and warning domain modules with fixed timestamps and positions.
+ */
+
 import { deriveTrackFromFixes, resolveTrack } from './track';
 import { buildPrimaryWarning, clockCodeFromRelativeBearing } from './warning';
 import type { AircraftState, ThreatEvaluationResult } from './types';

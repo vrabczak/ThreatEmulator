@@ -1,3 +1,8 @@
+/**
+ * Validates threat-editor input and resolves coordinate, MGRS, or aircraft-relative placement.
+ * Parsing depends on shared decimal/geodesy helpers and the third-party MGRS converter.
+ */
+
 import { toPoint as mgrsToPoint } from 'mgrs';
 import { parseDecimal } from './csv';
 import { destinationPoint } from './geo';
@@ -23,6 +28,13 @@ export interface ThreatEditorInput {
 
 export type ThreatEditorResult = { threat: Threat; errors: [] } | { errors: string[] };
 
+/**
+ * Validates editor fields and builds a normalized threat definition.
+ * @param input - Raw strings and selected position mode from the editor form.
+ * @param aircraftPosition - Current aircraft position for relative placement.
+ * @param existingIds - Threat IDs that the new or edited threat must not duplicate.
+ * @returns A threat with no errors, or all validation errors found in the input.
+ */
 export function buildThreatFromEditor(
   input: ThreatEditorInput,
   aircraftPosition: LatLon | null,
@@ -79,8 +91,7 @@ function resolveEditorLocation(
       return { errors: ['MGRS coordinate is required.'] };
     }
 
-    // The converter can partially parse
-    // non-digits or accept more than the standard five digits per axis.
+    // The converter partially accepts malformed coordinates, so validate the complete MGRS grammar first.
     if (!MGRS_PATTERN.test(mgrs)) {
       return { errors: ['MGRS coordinate is invalid.'] };
     }
