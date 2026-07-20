@@ -39,6 +39,7 @@ The application runs entirely in the browser, uses user-selected local files and
 - TypeScript.
 - Vite.
 - Browser-only single-page application.
+- Native HTML `<template>` elements for declarative UI markup and repeated dynamic rows. Vite imports the application shell from a dedicated HTML source file; TypeScript must not contain large HTML string literals.
 - Leaflet for the interactive situational map.
 - OpenStreetMap and OpenTopoMap raster tiles as keyless online background layers.
 - Google satellite imagery through the official Google Maps JavaScript API and Leaflet GoogleMutant adapter when a Google browser API key is configured.
@@ -280,6 +281,8 @@ Required controls and displays:
   - Automatic framing when the displayed aircraft/threat set changes, while preserving user pan and zoom during ordinary aircraft position updates.
 
 The UI must be designed for iPad mini screen size and touch interaction.
+
+UI implementation responsibilities are separated by feature: the entry module owns bootstrap and top-level orchestration, while dedicated UI modules own shell mounting, state rendering, threat editing, map lifecycle, and wake-lock lifecycle. Dynamic user/file content is assigned as text rather than interpolated into HTML.
 
 ## Offline And PWA Behavior
 

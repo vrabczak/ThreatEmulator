@@ -1,0 +1,221 @@
+<!--
+  Defines the Threat Emulator application shell and reusable DOM templates.
+  Element IDs are the stable binding contract used by the TypeScript UI controllers.
+-->
+<main class="app-shell">
+  <header class="topbar">
+    <div class="brand">
+      <h1>Threat Emulator</h1>
+      <span>Offline terrain threat warning</span>
+    </div>
+    <div id="emulatorState" class="status-pill">STOPPED</div>
+  </header>
+
+  <section id="warningBand" class="warning-band">
+    <div id="primaryWarning" class="warning-text" aria-live="polite">NO ACTIVE THREAT</div>
+    <div class="evaluation-timing" aria-label="Threat calculation status">
+      <span id="evaluationPulse" class="evaluation-pulse" aria-hidden="true"></span>
+      <span id="evaluationCountdown">Updates stopped</span>
+    </div>
+  </section>
+
+  <section class="content">
+    <div class="panel">
+      <div class="panel-header">Controls</div>
+      <div class="panel-body">
+        <div id="appMessage" class="message"></div>
+
+        <div class="controls">
+          <div class="field">
+            <label for="csvInput">Threat CSV</label>
+            <input id="csvInput" class="file-input-fallback" type="file" accept=".csv,text/csv" aria-label="Threat CSV file" />
+            <div class="file-picker-control">
+              <button id="csvImportButton" class="file-import-button" type="button">Import</button>
+              <div id="csvImportStatus" class="file-picker-status" aria-live="polite">No file selected</div>
+            </div>
+          </div>
+          <div class="field">
+            <span class="field-label">Elevation GeoTIFF</span>
+            <input id="terrainInput" class="file-input-fallback" type="file" accept=".tif,.tiff,image/tiff" aria-label="Elevation GeoTIFF file" />
+            <div class="file-picker-control">
+              <button id="terrainImportButton" class="file-import-button" type="button">Import</button>
+              <div id="terrainImportStatus" class="file-picker-status" aria-live="polite">No file selected</div>
+            </div>
+          </div>
+          <div class="button-row">
+            <button id="startStopButton" class="primary" type="button">Start</button>
+            <button id="stayAwakeButton" type="button" aria-pressed="false">Stay awake</button>
+          </div>
+        </div>
+
+        <div class="summary-list">
+          <div class="summary-row"><span>GNSS</span><strong id="gnssStatus">Idle</strong></div>
+        </div>
+      </div>
+    </div>
+
+    <details class="panel collapsible-panel">
+      <summary class="panel-header">Aircraft Status</summary>
+      <div class="panel-body">
+        <div class="status-grid">
+          <div class="metric"><span class="metric-label">Latitude</span><span id="latValue" class="metric-value">--</span></div>
+          <div class="metric"><span class="metric-label">Longitude</span><span id="lonValue" class="metric-value">--</span></div>
+          <div class="metric"><span class="metric-label">GPS altitude</span><span id="altValue" class="metric-value">--</span></div>
+          <div class="metric"><span class="metric-label">Height above ground</span><span id="aglValue" class="metric-value">--</span></div>
+          <div class="metric"><span class="metric-label">GPS precision</span><span id="precisionValue" class="metric-value">--</span></div>
+          <div class="metric"><span class="metric-label">Track</span><span id="trackValue" class="metric-value">--</span></div>
+        </div>
+      </div>
+    </details>
+
+    <details id="evaluationPanel" class="panel collapsible-panel threat-panel">
+      <summary class="panel-header">Threats</summary>
+      <div class="panel-body">
+        <div class="threat-toolbar">
+          <div class="threat-toolbar-copy">
+            <strong>Threat list</strong>
+            <span class="muted">Import a CSV or manage threats here.</span>
+          </div>
+          <div class="threat-toolbar-actions">
+            <button id="exportThreatsButton" class="compact-button" type="button" hidden>Export CSV</button>
+            <button id="addThreatButton" class="primary compact-button" type="button">Add threat</button>
+          </div>
+        </div>
+
+        <form id="threatEditor" class="threat-editor" hidden novalidate>
+          <div class="editor-heading">
+            <div>
+              <h2 id="threatEditorTitle">Add threat</h2>
+              <p class="muted">Enter WGS84 or MGRS coordinates, or place the threat from the latest aircraft position.</p>
+            </div>
+          </div>
+
+          <div class="editor-grid">
+            <label class="field" for="threatId">ID
+              <input id="threatId" name="id" type="text" autocomplete="off" required />
+            </label>
+            <label class="field" for="threatName">Description
+              <input id="threatName" name="name" type="text" autocomplete="off" placeholder="Optional" />
+            </label>
+            <label class="field" for="threatHeightAglM">Height AGL (m, optional)
+              <input id="threatHeightAglM" name="heightAglM" type="text" inputmode="decimal" />
+              <span class="field-hint muted">Leave blank for a magic threat that always has clear line of sight.</span>
+            </label>
+            <label class="field" for="threatRangeKm">Effective range (km)
+              <input id="threatRangeKm" name="rangeKm" type="text" inputmode="decimal" required />
+            </label>
+          </div>
+
+          <fieldset class="position-fieldset">
+            <legend>Position</legend>
+            <div class="position-options">
+              <label><input type="radio" name="positionMode" value="coordinates" checked /> Coordinates</label>
+              <label><input type="radio" name="positionMode" value="mgrs" /> MGRS</label>
+              <label><input type="radio" name="positionMode" value="relative" /> Relative to aircraft</label>
+            </div>
+
+            <div id="coordinatePositionFields" class="editor-grid position-fields">
+              <label class="field" for="threatLatitude">Latitude
+                <input id="threatLatitude" name="latitude" type="text" inputmode="decimal" placeholder="50.0755" />
+              </label>
+              <label class="field" for="threatLongitude">Longitude
+                <input id="threatLongitude" name="longitude" type="text" inputmode="decimal" placeholder="14.4378" />
+              </label>
+            </div>
+
+            <div id="mgrsPositionFields" class="editor-grid position-fields" hidden>
+              <label class="field full-width-field" for="threatMgrs">MGRS coordinate
+                <input id="threatMgrs" name="mgrs" type="text" autocomplete="off" autocapitalize="characters" placeholder="33U VR 59772 47176" />
+                <span class="muted">Spaces are optional. Precision determines the center point used for the threat.</span>
+              </label>
+            </div>
+
+            <div id="relativePositionFields" class="editor-grid position-fields" hidden>
+              <label class="field" for="threatBearing">True bearing from aircraft (deg)
+                <input id="threatBearing" name="bearingDegrees" type="text" inputmode="decimal" placeholder="0-360" />
+              </label>
+              <label class="field" for="threatDistanceKm">Distance from aircraft (km)
+                <input id="threatDistanceKm" name="distanceKm" type="text" inputmode="decimal" />
+              </label>
+              <p id="relativePositionHint" class="field-hint muted"></p>
+            </div>
+          </fieldset>
+
+          <div id="threatEditorErrors" class="editor-errors" role="alert" hidden></div>
+          <div class="editor-actions">
+            <button id="cancelThreatButton" type="button">Cancel</button>
+            <button class="primary" type="submit">Save threat</button>
+          </div>
+        </form>
+
+        <div class="table-wrap">
+          <table class="threat-table">
+            <thead>
+              <tr>
+                <th><span>ID</span><span>Description</span></th>
+                <th><span>Distance</span><span>Range</span></th>
+                <th><span>LOS</span><span>State</span></th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="threatRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </details>
+
+    <details id="mapPanel" class="panel collapsible-panel map-panel">
+      <summary class="panel-header">
+        <span class="panel-title">Map</span>
+        <span id="mapConnectivity" class="map-connectivity" aria-live="polite"></span>
+      </summary>
+      <div class="panel-body map-panel-body">
+        <div class="map-toolbar">
+          <label for="mapBaseLayer">Base map</label>
+          <select id="mapBaseLayer">
+            <option value="street">OpenStreetMap</option>
+            <option value="topographic">OpenTopoMap</option>
+            <option id="googleSatelliteOption" value="google-satellite">Google satellite</option>
+          </select>
+          <span id="mapProviderStatus" class="map-provider-status" aria-live="polite"></span>
+        </div>
+        <div id="threatMap" class="threat-map" role="region" aria-label="Aircraft, threats, and threat ranges"></div>
+        <div class="map-legend" aria-label="Map legend">
+          <span><i class="map-legend-aircraft" aria-hidden="true"></i>Aircraft</span>
+          <span><i class="map-legend-threat" aria-hidden="true"></i>Threat and effective range</span>
+        </div>
+      </div>
+    </details>
+  </section>
+</main>
+
+<template id="summaryRowTemplate">
+  <div class="summary-row"><span data-field="label"></span><strong data-field="value"></strong></div>
+</template>
+
+<template id="emptyThreatRowTemplate">
+  <tr><td colspan="4" class="muted">No threats yet. Import a CSV or add one manually.</td></tr>
+</template>
+
+<template id="threatRowTemplate">
+  <tr>
+    <td>
+      <span class="table-primary" data-field="id"></span>
+      <span class="table-secondary" data-field="name"></span>
+    </td>
+    <td>
+      <span class="table-primary" data-field="distance"></span>
+      <span class="table-secondary" data-field="range"></span>
+    </td>
+    <td>
+      <span class="table-primary" data-field="lineOfSight"></span>
+      <span class="table-secondary" data-field="state"></span>
+    </td>
+    <td>
+      <div class="table-actions">
+        <button type="button" class="table-action" data-threat-action="edit">Edit</button>
+        <button type="button" class="table-action delete-action" data-threat-action="delete">Delete</button>
+      </div>
+    </td>
+  </tr>
+</template>

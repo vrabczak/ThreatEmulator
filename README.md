@@ -152,11 +152,17 @@ V1 does not model earth curvature, atmospheric refraction, or buildings. The map
 src/
   domain/       Core CSV parsing, geospatial math, warning, LOS, and evaluation logic
   services/     Browser-facing geolocation, Leaflet map, and terrain service wrappers
+  ui/           Declarative HTML shell, native DOM templates, rendering, and UI controllers
   workers/      GeoTIFF terrain loading, sampling, and LOS worker code
-  main.ts       UI wiring and app state
+  main.ts       Application bootstrap and top-level state orchestration
 fixtures/       Sample threat CSV data
 public/         PWA icon and static assets
 ```
+
+The UI shell is authored as normal HTML in `src/ui/app.html` and imported by Vite. Repeated
+summary and threat-table rows use native `<template>` elements, while TypeScript controllers
+clone those templates and assign dynamic values with `textContent`. This keeps HTML out of
+long TypeScript strings without adding a client framework or runtime templating dependency.
 
 ## Deployment
 
