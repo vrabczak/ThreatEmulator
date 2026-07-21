@@ -152,8 +152,16 @@ input {
 .content {
   display: grid;
   grid-template-columns: minmax(20rem, 0.85fr) minmax(28rem, 1.15fr);
+  align-items: start;
   gap: 1rem;
   padding: 1rem;
+}
+
+.left-panel-stack {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 1rem;
 }
 
 .panel {
@@ -163,12 +171,8 @@ input {
   background: #ffffff;
 }
 
-.threat-panel {
-  grid-column: 1 / -1;
-}
-
 .map-panel {
-  grid-column: 1 / -1;
+  min-width: 0;
 }
 
 .panel-header {
@@ -226,9 +230,19 @@ input {
 
 .map-toolbar {
   display: grid;
-  grid-template-columns: auto minmax(12rem, 18rem) 1fr;
+  grid-template-columns: auto minmax(5rem, 1fr) auto;
   align-items: center;
   gap: 0.55rem 0.75rem;
+}
+
+.map-toolbar > label[for="mapBaseLayer"] {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.map-toolbar > select {
+  grid-column: 2;
+  grid-row: 1;
 }
 
 .map-toolbar label {
@@ -236,6 +250,8 @@ input {
 }
 
 .map-toolbar select {
+  width: 100%;
+  min-width: 0;
   min-height: 2.75rem;
   padding: 0.55rem 2.2rem 0.55rem 0.7rem;
   border: 1px solid #9ca3af;
@@ -246,14 +262,33 @@ input {
   font-weight: 700;
 }
 
-.map-provider-status {
-  color: #64748b;
-  font-size: 0.82rem;
-  font-weight: 700;
+.map-follow-control {
+  display: inline-flex;
+  grid-column: 3;
+  grid-row: 1;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 2.75rem;
+  white-space: nowrap;
 }
 
-.map-provider-status.error {
-  color: #b91c1c;
+.map-follow-control input {
+  width: 1.2rem;
+  height: 1.2rem;
+  margin: 0;
+}
+
+.map-placement-hint {
+  margin: 0;
+  font-size: 0.86rem;
+}
+
+.map-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.55rem 1rem;
 }
 
 .threat-map {
@@ -291,8 +326,17 @@ input {
 }
 
 .map-legend-aircraft {
-  border-radius: 3px;
+  position: relative;
+  border-radius: 999px;
   background: #1d4ed8;
+}
+
+.map-legend-aircraft::after {
+  position: absolute;
+  inset: 0.14rem;
+  background: #ffffff;
+  clip-path: polygon(50% 0%, 60% 36%, 100% 58%, 100% 72%, 60% 58%, 60% 80%, 72% 91%, 72% 100%, 50% 94%, 28% 100%, 28% 91%, 40% 80%, 40% 58%, 0% 72%, 0% 58%, 40% 36%);
+  content: '';
 }
 
 .map-legend-threat {
@@ -337,17 +381,22 @@ input {
 
 .aircraft-map-marker {
   display: grid;
-  width: 2rem;
-  height: 2rem;
+  width: 2.25rem;
+  height: 2.25rem;
   place-items: center;
   color: #ffffff;
   border: 3px solid #ffffff;
   border-radius: 999px;
   background: #1d4ed8;
   box-shadow: 0 2px 7px rgb(15 23 42 / 55%);
-  font-size: 1rem;
-  line-height: 1;
   transform: rotate(var(--aircraft-track));
+}
+
+.aircraft-map-marker-symbol {
+  width: 1.65rem;
+  height: 1.65rem;
+  fill: currentcolor;
+  filter: drop-shadow(0 1px 1px rgb(15 23 42 / 45%));
 }
 
 .panel-body {
@@ -791,17 +840,53 @@ button.delete-action {
   }
 }
 
+@media (min-width: 901px) {
+  .app-shell {
+    height: 100vh;
+    height: 100dvh;
+    min-height: 0;
+    grid-template-rows: auto auto minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  .content {
+    min-height: 0;
+    grid-template-rows: minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  .left-panel-stack {
+    height: 100%;
+    max-height: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+  }
+
+  .map-panel[open] {
+    min-height: 0;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+    align-self: stretch;
+  }
+
+  .map-panel[open] > .map-panel-body {
+    height: 100%;
+    min-height: 0;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    overflow: hidden;
+  }
+
+  .map-panel[open] .threat-map {
+    height: 100%;
+    min-height: 0;
+  }
+
+}
+
 @media (max-width: 900px) {
   .content {
     grid-template-columns: 1fr;
-  }
-
-  .threat-panel {
-    grid-column: auto;
-  }
-
-  .map-panel {
-    grid-column: auto;
   }
 }
 
@@ -841,7 +926,11 @@ button.delete-action {
     grid-template-columns: 1fr 1fr;
   }
 
+  .map-follow-control {
+    white-space: normal;
+  }
+
   .map-toolbar {
-    grid-template-columns: 1fr;
+    grid-template-columns: auto minmax(5rem, 1fr) minmax(0, 7rem);
   }
 }

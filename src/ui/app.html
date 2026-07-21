@@ -22,7 +22,8 @@
   </section>
 
   <section class="content">
-    <div class="panel">
+    <div class="left-panel-stack">
+      <div class="panel">
       <div class="panel-header">Controls</div>
       <div class="panel-body">
         <div id="appMessage" class="message"></div>
@@ -54,23 +55,23 @@
           <div class="summary-row"><span>GNSS</span><strong id="gnssStatus">Idle</strong></div>
         </div>
       </div>
-    </div>
-
-    <details class="panel collapsible-panel">
-      <summary class="panel-header">Aircraft Status</summary>
-      <div class="panel-body">
-        <div class="status-grid">
-          <div class="metric"><span class="metric-label">Latitude</span><span id="latValue" class="metric-value">--</span></div>
-          <div class="metric"><span class="metric-label">Longitude</span><span id="lonValue" class="metric-value">--</span></div>
-          <div class="metric"><span class="metric-label">GPS altitude</span><span id="altValue" class="metric-value">--</span></div>
-          <div class="metric"><span class="metric-label">Height above ground</span><span id="aglValue" class="metric-value">--</span></div>
-          <div class="metric"><span class="metric-label">GPS precision</span><span id="precisionValue" class="metric-value">--</span></div>
-          <div class="metric"><span class="metric-label">Track</span><span id="trackValue" class="metric-value">--</span></div>
-        </div>
       </div>
-    </details>
 
-    <details id="evaluationPanel" class="panel collapsible-panel threat-panel">
+      <details class="panel collapsible-panel">
+        <summary class="panel-header">Aircraft Status</summary>
+        <div class="panel-body">
+          <div class="status-grid">
+            <div class="metric"><span class="metric-label">Latitude</span><span id="latValue" class="metric-value">--</span></div>
+            <div class="metric"><span class="metric-label">Longitude</span><span id="lonValue" class="metric-value">--</span></div>
+            <div class="metric"><span class="metric-label">GPS altitude</span><span id="altValue" class="metric-value">--</span></div>
+            <div class="metric"><span class="metric-label">Height above ground</span><span id="aglValue" class="metric-value">--</span></div>
+            <div class="metric"><span class="metric-label">GPS precision</span><span id="precisionValue" class="metric-value">--</span></div>
+            <div class="metric"><span class="metric-label">Track</span><span id="trackValue" class="metric-value">--</span></div>
+          </div>
+        </div>
+      </details>
+
+      <details id="evaluationPanel" class="panel collapsible-panel threat-panel">
       <summary class="panel-header">Threats</summary>
       <div class="panel-body">
         <div class="threat-toolbar">
@@ -164,7 +165,8 @@
           </table>
         </div>
       </div>
-    </details>
+      </details>
+    </div>
 
     <details id="mapPanel" class="panel collapsible-panel map-panel">
       <summary class="panel-header">
@@ -179,12 +181,18 @@
             <option value="topographic">OpenTopoMap</option>
             <option id="googleSatelliteOption" value="google-satellite">Google satellite</option>
           </select>
-          <span id="mapProviderStatus" class="map-provider-status" aria-live="polite"></span>
+          <label class="map-follow-control" for="centerMapOnAircraft">
+            <input id="centerMapOnAircraft" type="checkbox" />
+            Center on aircraft
+          </label>
         </div>
-        <div id="threatMap" class="threat-map" role="region" aria-label="Aircraft, threats, and threat ranges"></div>
-        <div class="map-legend" aria-label="Map legend">
-          <span><i class="map-legend-aircraft" aria-hidden="true"></i>Aircraft</span>
-          <span><i class="map-legend-threat" aria-hidden="true"></i>Threat and effective range</span>
+        <div id="threatMap" class="threat-map" role="region" aria-label="Aircraft, threats, threat ranges, and threat placement"></div>
+        <div class="map-footer">
+          <div class="map-legend" aria-label="Map legend">
+            <span><i class="map-legend-aircraft" aria-hidden="true"></i>Aircraft</span>
+            <span><i class="map-legend-threat" aria-hidden="true"></i>Threat and effective range</span>
+          </div>
+          <p class="map-placement-hint muted">Long press the map, or right-click with a mouse, to place a threat.</p>
         </div>
       </div>
     </details>

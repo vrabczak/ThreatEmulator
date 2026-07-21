@@ -77,16 +77,19 @@ export class ThreatEmulatorApp {
       onMessage: (message, tone) => this.setMessage(message, tone),
       onStateChanged: () => this.render()
     });
-    this.mapController = new MapController({
-      getAircraftState: () => this.aircraftAltitudeController.aircraftState,
-      getThreats: () => this.threats
-    });
     this.threatEditorController = new ThreatEditorController({
       getThreats: () => this.threats,
       getAircraftState: () => this.aircraftAltitudeController.aircraftState,
       onThreatsChanged: (nextThreats, message) => {
         this.threats = nextThreats;
         this.commitThreatChange(message);
+      }
+    });
+    this.mapController = new MapController({
+      getAircraftState: () => this.aircraftAltitudeController.aircraftState,
+      getThreats: () => this.threats,
+      onCoordinateSelected: (latitude, longitude) => {
+        this.threatEditorController.placeAtCoordinates(latitude, longitude);
       }
     });
     this.wakeLockController = new WakeLockController({

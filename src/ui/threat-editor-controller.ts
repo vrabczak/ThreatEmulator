@@ -1,5 +1,5 @@
 /**
- * Owns threat editor form state, validation, and delegated list edit/delete actions.
+ * Owns threat editor form state, map-based placement, validation, and delegated list actions.
  * Domain validation stays in `threat-editor`; application state changes are returned by callback.
  */
 
@@ -67,6 +67,30 @@ export class ThreatEditorController {
     this.editingThreatIndex = null;
     this.form.hidden = true;
     getElement('threatEditorErrors').hidden = true;
+  }
+
+  /**
+   * Opens a new-threat editor when necessary and applies a position selected on the map.
+   * Existing visible editor values and its add/edit target are preserved.
+   * @param latitude - Selected WGS84 latitude in decimal degrees.
+   * @param longitude - Selected WGS84 longitude in decimal degrees.
+   * @returns Nothing.
+   */
+  public placeAtCoordinates(latitude: number, longitude: number): void {
+    if (this.form.hidden) {
+      this.open();
+    }
+
+    this.setSelectedPositionMode('coordinates');
+    this.setInputValue('threatLatitude', latitude.toFixed(6));
+    this.setInputValue('threatLongitude', longitude.toFixed(6));
+    getElement('threatEditorErrors').hidden = true;
+    this.refreshPositionFields();
+
+    // Wait for the newly expanded Threats panel to participate in layout before scrolling.
+    window.requestAnimationFrame(() => {
+      this.form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
   }
 
   /**

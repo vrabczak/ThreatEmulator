@@ -17,7 +17,8 @@ The app is built with TypeScript, Vite, Vitest, Leaflet, `geotiff`, `papaparse`,
 - Evaluates threats every 3 seconds while the emulator is active.
 - Shows one equally prominent `DESCRIPTION CLOCK CODE DISTANCE` warning call for every active threat in first-appearance order.
 - Shows aircraft position, GPS altitude, height above ground, precision, track, validation status, and evaluation results.
-- Shows aircraft and threat positions with effective-range circles in a collapsible Leaflet map.
+- Shows aircraft and threat positions with effective-range circles in a collapsible Leaflet map, with an optional center-on-aircraft mode that disengages when the map is moved manually.
+- Opens and scrolls to a coordinate-populated threat form by long pressing a map location, or right-clicking it with a mouse; repeating the gesture while a form is open updates only its position and scrolls back to it.
 - Lets the user choose OpenStreetMap, OpenTopoMap, or optionally Google satellite imagery while online, and keeps the map overlays available over a neutral grid when offline.
 
 ## Requirements
@@ -67,8 +68,9 @@ npm run preview
 5. Wait for an aircraft position with GPS altitude.
 6. Start the emulator.
 7. Read each active `DESCRIPTION CLOCK CODE DISTANCE` threat call in the warning area. Calls retain activation order while active; a threat that becomes inactive and later reactivates returns at the bottom. Threats first detected together use threat-list order.
-8. Expand the collapsed Aircraft Status, Threats, and Map panels as needed. The threat table is available before the emulator starts and shows each threat's ID/description, distance/range, LOS/state, and edit/delete actions.
-9. In the Map panel, choose OpenStreetMap, OpenTopoMap, or Google satellite as the base map. Red markers identify threats, red circles show their effective ranges, and the blue directional marker identifies the latest aircraft position. Online tiles disappear while offline, but the same overlays remain usable over a neutral grid.
+8. Expand the collapsed Aircraft Status, Threats, and Map panels as needed. On widescreen displays, Controls, Aircraft Status, and Threats form a separately scrollable left column while the Map panel fills the available screen height in the right column. Narrower displays use a single-column layout. The `Base map` label, base-map selector, and `Center on aircraft` control share one row at every layout width. The threat table is available before the emulator starts and shows each threat's ID/description, distance/range, LOS/state, and edit/delete actions.
+9. In the Map panel, choose OpenStreetMap, OpenTopoMap, or Google satellite as the base map. Red markers identify threats, red circles show their effective ranges, and a blue top-down airplane identifies the latest aircraft position. The airplane's nose follows the available GPS track and points north when track is unavailable. Select `Center on aircraft` to keep the map centered as the position changes; manually panning or zooming the map clears the checkbox. The panel header reports online/offline connectivity without a separate provider-status message. Online tiles disappear while offline, but the same overlays remain usable over a neutral grid.
+10. Use the placement hint displayed beside the map legend: long press a desired map location on a touch device, or right-click it with a mouse, to open the Threats panel with a new-threat form in coordinate mode and scroll to it. When an add or edit form is already open, the gesture replaces its latitude and longitude without clearing any other values, then scrolls back to the form.
 
 ### Google satellite configuration
 

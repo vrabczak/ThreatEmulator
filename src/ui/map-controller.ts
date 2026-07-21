@@ -1,5 +1,6 @@
 /**
- * Owns Leaflet map lifecycle, base-map selection, and online/offline provider status.
+ * Owns Leaflet map lifecycle, base-map selection, aircraft-following controls,
+ * threat-position gestures, and connectivity state.
  * It defers map creation until the collapsed map panel is opened to avoid hidden-size issues.
  */
 
@@ -7,25 +8,36 @@ import type { AircraftState, Threat } from '../domain/types';
 import { ThreatMap, type BaseMapId } from '../services/threat-map';
 import { getElement } from './dom';
 
+/** State accessors and interaction callbacks required by the Map panel. */
 export interface MapControllerOptions {
   getAircraftState: () => AircraftState | null;
   getThreats: () => Threat[];
+  onCoordinateSelected: (latitude: number, longitude: number) => void;
 }
 
 /**
  * Coordinates the situational map and its provider controls for the mounted page lifecycle.
  */
 export class MapController {
-  private readonly map = new ThreatMap();
+  private readonly map: ThreatMap;
   private readonly panel = getElement<HTMLDetailsElement>('mapPanel');
   private readonly baseLayer = getElement<HTMLSelectElement>('mapBaseLayer');
-  private baseLayerRequest = 0;
+  private readonly centerOnAircraft = getElement<HTMLInputElement>('centerMapOnAircraft');
 
   /**
    * Creates the controller and binds panel, provider, and connectivity events.
    * @param options - Accessors for the latest aircraft and threat state.
    */
   public constructor(private readonly options: MapControllerOptions) {
+    this.map = new ThreatMap({
+      onCoordinateSelected: (latitude, longitude) => {
+        this.options.onCoordinateSelected(latitude, longitude);
+      },
+      onManualMove: () => {
+        this.centerOnAircraft.checked = false;
+        this.map.setCenterOnAircraft(false, this.options.getAircraftState());
+      }
+    });
     const googleSatelliteOption = getElement<HTMLOptionElement>('googleSatelliteOption');
     googleSatelliteOption.disabled = !this.map.hasGoogleImagery();
     if (googleSatelliteOption.disabled) {
@@ -42,6 +54,12 @@ export class MapController {
       window.requestAnimationFrame(() => this.map.invalidateSize());
     });
     this.baseLayer.addEventListener('change', () => void this.applyBaseLayer());
+    this.centerOnAircraft.addEventListener('change', () => {
+      this.map.setCenterOnAircraft(
+        this.centerOnAircraft.checked,
+        this.options.getAircraftState()
+      );
+    });
     window.addEventListener('online', () => this.handleConnectivityChange());
     window.addEventListener('offline', () => this.handleConnectivityChange());
     this.renderConnectivity();
@@ -70,30 +88,11 @@ export class MapController {
   }
 
   private async applyBaseLayer(): Promise<void> {
-    const request = ++this.baseLayerRequest;
-    const status = getElement('mapProviderStatus');
-    const baseMap = this.selectedBaseMap();
-    status.classList.remove('error');
-    status.textContent = navigator.onLine
-      ? baseMap === 'google-satellite' ? 'Loading Google imagery...' : 'Loading map tiles...'
-      : 'Selected base map will return when online.';
-
     try {
-      await this.map.setBaseMap(baseMap, navigator.onLine);
-      if (request !== this.baseLayerRequest) {
-        return;
-      }
-      status.textContent = navigator.onLine
-        ? baseMap === 'street'
-          ? 'OpenStreetMap selected.'
-          : baseMap === 'topographic' ? 'OpenTopoMap selected.' : 'Google satellite selected.'
-        : 'Selected base map will return when online.';
+      await this.map.setBaseMap(this.selectedBaseMap(), navigator.onLine);
     } catch (error) {
-      if (request !== this.baseLayerRequest) {
-        return;
-      }
-      status.textContent = error instanceof Error ? error.message : 'Unable to load the selected base map.';
-      status.classList.add('error');
+      // Provider failures remain diagnostic-only because the toolbar no longer displays transient status text.
+      console.error('Unable to load the selected base map.', error);
     }
   }
 

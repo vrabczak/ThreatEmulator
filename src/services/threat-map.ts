@@ -1,6 +1,7 @@
 /**
  * Renders aircraft and threat overlays on a Leaflet map with selectable online base layers.
- * Google imagery is loaded lazily and requires a Vite-provided API key plus network connectivity.
+ * It supports aircraft-following and threat-position gestures; Google imagery is loaded lazily
+ * and requires a Vite-provided API key plus network connectivity.
  */
 
 import L, { type Layer, type LayerGroup, type Map as LeafletMap } from 'leaflet';
@@ -12,11 +13,18 @@ const DEFAULT_CENTER: L.LatLngExpression = [20, 0];
 const DEFAULT_ZOOM = 2;
 const GOOGLE_MAPS_SCRIPT_ID = 'google-maps-javascript-api';
 const GOOGLE_MUTANT_SCRIPT_ID = 'leaflet-google-mutant';
+const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 
 export type BaseMapId = 'street' | 'topographic' | 'google-satellite';
 
+/** Callbacks used to pass map interactions back to the UI layer. */
+export interface ThreatMapOptions {
+  onCoordinateSelected: (latitude: number, longitude: number) => void;
+  onManualMove: () => void;
+}
+
 /**
- * Owns the Leaflet map, overlays, base-layer cache, and automatic data fitting behavior.
+ * Owns the Leaflet map, overlays, base-layer cache, aircraft-following state, and data fitting.
  * Initialization is idempotent; layer revisions prevent stale asynchronous loads from becoming active.
  */
 export class ThreatMap {
@@ -28,7 +36,15 @@ export class ThreatMap {
   private online = false;
   private baseLayerRevision = 0;
   private lastFittedDataSignature = '';
+  private centerOnAircraft = false;
+  private isProgrammaticMove = false;
   private readonly googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY?.trim() ?? '';
+
+  /**
+   * Creates the map service with a callback for user-selected threat positions.
+   * @param options - Map interaction callbacks supplied by the UI controller.
+   */
+  public constructor(private readonly options: ThreatMapOptions) {}
 
   /**
    * Initializes the map once or refreshes an already initialized map's connectivity and size.
@@ -44,10 +60,37 @@ export class ThreatMap {
 
     this.map = L.map(container, {
       zoomControl: true,
-      attributionControl: true
+      attributionControl: true,
+      // Leaflet translates a stationary touch hold into the same event as a desktop right-click.
+      tapHold: true
     }).setView(DEFAULT_CENTER, DEFAULT_ZOOM);
+    this.map.on('contextmenu', (event) => {
+      // Repeated map worlds can report longitudes beyond WGS84's validation range.
+      const coordinate = event.latlng.wrap();
+      this.options.onCoordinateSelected(coordinate.lat, coordinate.lng);
+    });
+    this.map.on('movestart', () => {
+      // Leaflet emits the same event for API-driven and user-driven navigation.
+      if (this.centerOnAircraft && !this.isProgrammaticMove) {
+        this.centerOnAircraft = false;
+        this.options.onManualMove();
+      }
+    });
     this.overlays = L.layerGroup().addTo(this.map);
     this.online = online;
+  }
+
+  /**
+   * Enables or disables keeping the map centered on the latest aircraft position.
+   * @param enabled - Whether aircraft-following mode is active.
+   * @param aircraft - Latest aircraft state, or `null` before a fix is available.
+   * @returns Nothing.
+   */
+  setCenterOnAircraft(enabled: boolean, aircraft: AircraftState | null): void {
+    this.centerOnAircraft = enabled;
+    if (enabled && aircraft) {
+      this.centerMapOnAircraft(aircraft);
+    }
   }
 
   /**
@@ -153,15 +196,40 @@ export class ThreatMap {
       .join('|')}`;
     if (dataSignature !== this.lastFittedDataSignature) {
       if (bounds.isValid()) {
-        this.map.fitBounds(bounds.pad(0.12), { maxZoom: 13 });
+        this.moveProgrammatically(() => {
+          this.map?.fitBounds(bounds.pad(0.12), { maxZoom: 13, animate: false });
+        });
       }
       this.lastFittedDataSignature = dataSignature;
+    }
+
+    if (this.centerOnAircraft && aircraft) {
+      this.centerMapOnAircraft(aircraft);
     }
   }
 
   /** Invalidates Leaflet's cached container size without panning the map. */
   invalidateSize(): void {
     this.map?.invalidateSize({ pan: false });
+  }
+
+  private centerMapOnAircraft(aircraft: AircraftState): void {
+    if (!this.map) {
+      return;
+    }
+    const position = L.latLng(aircraft.latitude, aircraft.longitude);
+    this.moveProgrammatically(() => {
+      this.map?.setView(position, this.map.getZoom(), { animate: false });
+    });
+  }
+
+  private moveProgrammatically(move: () => void): void {
+    this.isProgrammaticMove = true;
+    try {
+      move();
+    } finally {
+      this.isProgrammaticMove = false;
+    }
   }
 
   private async getBaseLayer(baseMap: BaseMapId): Promise<Layer> {
@@ -289,13 +357,28 @@ function buildThreatIcon(id: string): L.DivIcon {
 function buildAircraftIcon(trackDegrees: number | null): L.DivIcon {
   const icon = document.createElement('div');
   icon.className = 'aircraft-map-marker';
+  icon.setAttribute('aria-hidden', 'true');
   icon.style.setProperty('--aircraft-track', `${trackDegrees ?? 0}deg`);
-  icon.textContent = '\u25B2';
+
+  const airplane = document.createElementNS(SVG_NAMESPACE, 'svg');
+  airplane.setAttribute('class', 'aircraft-map-marker-symbol');
+  airplane.setAttribute('viewBox', '0 0 32 32');
+  airplane.setAttribute('focusable', 'false');
+
+  const silhouette = document.createElementNS(SVG_NAMESPACE, 'path');
+  // The silhouette faces up in its local coordinates, so zero degrees is true north on the map.
+  silhouette.setAttribute(
+    'd',
+    'M16 2.5c-1.2 0-2 1-2 2.2v7.2L5 17v3l9-2.6v5.3l-3 2V27l5-1.5 5 1.5v-2.3l-3-2v-5.3l9 2.6v-3l-9-5.1V4.7c0-1.2-.8-2.2-2-2.2Z'
+  );
+  airplane.append(silhouette);
+  icon.append(airplane);
+
   return L.divIcon({
     className: 'aircraft-map-div-icon',
     html: icon,
-    iconSize: [32, 32],
-    iconAnchor: [16, 16]
+    iconSize: [36, 36],
+    iconAnchor: [18, 18]
   });
 }
 
