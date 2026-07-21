@@ -359,6 +359,7 @@ export class ThreatEmulatorApp {
       terrainMetadata: this.terrainController.metadata,
       persistentTerrainSupported: this.terrainController.persistentSupported,
       rememberedTerrainFileName: this.terrainController.rememberedTerrainFileName,
+      rememberedTerrainLookupComplete: this.terrainController.rememberedTerrainLookupComplete,
       aircraftState: this.aircraftAltitudeController.aircraftState,
       lastAircraftTerrainReason: this.aircraftAltitudeController.terrainReason,
       geolocationStatus: this.geolocationStatus,

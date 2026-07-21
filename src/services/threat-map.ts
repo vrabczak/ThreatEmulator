@@ -1,7 +1,8 @@
 /**
  * Renders aircraft and threat overlays on a Leaflet map with selectable online base layers.
  * It supports aircraft-following and threat-position gestures; Google imagery is loaded lazily
- * and requires a Vite-provided API key plus network connectivity.
+ * and requires a Vite-provided API key plus network connectivity. Overlay colors use the
+ * semantic CSS variables defined by the application stylesheet.
  */
 
 import L, { type Layer, type LayerGroup, type Map as LeafletMap } from 'leaflet';
@@ -160,10 +161,11 @@ export class ThreatMap {
       const position = L.latLng(threat.latitude, threat.longitude);
       const range = L.circle(position, {
         radius: threat.rangeKm * 1000,
-        color: '#dc2626',
+        // CSS variables keep existing Leaflet SVG overlays synchronized with theme changes.
+        color: 'var(--color-danger-strong)',
         weight: 2,
         opacity: 0.85,
-        fillColor: '#ef4444',
+        fillColor: 'var(--color-danger-strong)',
         fillOpacity: 0.1
       }).addTo(this.overlays);
       range.bindTooltip(buildThreatDetails(threat), { sticky: true });

@@ -8,13 +8,16 @@ The app is built with TypeScript, Vite, Vitest, Leaflet, `geotiff`, `papaparse`,
 
 - Runs entirely in the browser as a static single-page app.
 - Supports offline launch as a PWA after installation.
+- Switches between a light white/black/grey/blue/red theme and a dark black/grey/white/green/red theme, remembering the selection on the device.
 - Loads user-selected local threat CSV files and supports adding, editing, or deleting threats in the Threats panel.
 - Exports the current non-empty threat list as a semicolon-delimited CSV file.
 - Places manual threats by WGS84 decimal-degree coordinates, MGRS, or true bearing and distance from the latest aircraft position.
 - Optionally loads a user-selected local WGS84 elevation GeoTIFF for terrain-aware line-of-sight checks.
 - Can remember a local GeoTIFF through a persistent file handle on compatible browsers.
+- Offers a download link for the elevation GeoTIFF when no terrain file is loaded or remembered.
 - Converts browser WGS84 ellipsoid altitude to EGM96 orthometric MSL altitude, then calculates height above ground from local terrain elevation.
 - Evaluates threats every 3 seconds while the emulator is active.
+- Shows whether evaluation is running through the Start/Stop button, warning area, and evaluation countdown without a redundant header status badge.
 - Shows one equally prominent `DESCRIPTION CLOCK CODE DISTANCE` warning call for every active threat in first-appearance order.
 - Shows aircraft position, GPS altitude, height above ground, precision, track, validation status, and evaluation results.
 - Shows aircraft and threat positions with effective-range circles in a collapsible Leaflet map, with an optional center-on-aircraft mode that disengages when the map is moved manually.
@@ -62,15 +65,16 @@ npm run preview
 ## Usage
 
 1. Open the app in a browser.
-2. Select a semicolon-delimited threat CSV file, or expand Threats and choose `Add threat`.
-3. Optionally select a local elevation GeoTIFF file, or use `Remember GeoTIFF` on compatible browsers to restore it on future launches.
-4. Grant browser geolocation permission when prompted.
-5. Wait for an aircraft position with GPS altitude.
-6. Start the emulator.
-7. Read each active `DESCRIPTION CLOCK CODE DISTANCE` threat call in the warning area. Calls retain activation order while active; a threat that becomes inactive and later reactivates returns at the bottom. Threats first detected together use threat-list order.
-8. Expand the collapsed Aircraft Status, Threats, and Map panels as needed. On widescreen displays, Controls, Aircraft Status, and Threats form a separately scrollable left column while the Map panel fills the available screen height in the right column. Narrower displays use a single-column layout. The `Base map` label, base-map selector, and `Center on aircraft` control share one row at every layout width. The threat table is available before the emulator starts and shows each threat's ID/description, distance/range, LOS/state, and edit/delete actions.
-9. In the Map panel, choose OpenStreetMap, OpenTopoMap, or Google satellite as the base map. Red markers identify threats, red circles show their effective ranges, and a blue top-down airplane identifies the latest aircraft position. The airplane's nose follows the available GPS track and points north when track is unavailable. Select `Center on aircraft` to keep the map centered as the position changes; manually panning or zooming the map clears the checkbox. The panel header reports online/offline connectivity without a separate provider-status message. Online tiles disappear while offline, but the same overlays remain usable over a neutral grid.
-10. Use the placement hint displayed beside the map legend: long press a desired map location on a touch device, or right-click it with a mouse, to open the Threats panel with a new-threat form in coordinate mode and scroll to it. When an add or edit form is already open, the gesture replaces its latitude and longitude without clearing any other values, then scrolls back to the form.
+2. Select the sun–moon toggle in the header to change appearance. Its high-contrast thumb moves toward the active theme. Light is the first-visit default, and the browser remembers an explicit selection for future launches.
+3. Select a semicolon-delimited threat CSV file, or expand Threats and choose `Add threat`.
+4. Optionally select a local elevation GeoTIFF file, use the offered download link when no file is available locally, or restore a remembered file on compatible browsers.
+5. Grant browser geolocation permission when prompted.
+6. Wait for an aircraft position with GPS altitude.
+7. Start the emulator. Its running state is visible from the Stop button, warning area, and evaluation countdown; the header has no separate state badge.
+8. Read each active `DESCRIPTION CLOCK CODE DISTANCE` threat call in the warning area. Calls retain activation order while active; a threat that becomes inactive and later reactivates returns at the bottom. Threats first detected together use threat-list order.
+9. Expand the collapsed Aircraft Status, Threats, and Map panels as needed. On widescreen displays, Controls, Aircraft Status, and Threats form a separately scrollable left column while the Map panel fills the available screen height in the right column. Narrower displays use a single-column layout. The `Base map` label, base-map selector, and `Center on aircraft` control share one row at every layout width. The threat table is available before the emulator starts and shows each threat's ID/description, distance/range, LOS/state, and edit/delete actions.
+10. In the Map panel, choose OpenStreetMap, OpenTopoMap, or Google satellite as the base map. Red markers identify threats and their effective ranges. The top-down aircraft marker uses blue in the light theme and green in the dark theme. Its nose follows the available GPS track and points north when track is unavailable. Select `Center on aircraft` to keep the map centered as the position changes; manually panning or zooming the map clears the checkbox. The panel header reports online/offline connectivity without a separate provider-status message. Online tiles disappear while offline, but the same overlays remain usable over a neutral grid.
+11. Use the placement hint displayed beside the map legend: long press a desired map location on a touch device, or right-click it with a mouse, to open the Threats panel with a new-threat form in coordinate mode and scroll to it. When an add or edit form is already open, the gesture replaces its latitude and longitude without clearing any other values, then scrolls back to the form.
 
 ### Google satellite configuration
 
@@ -173,6 +177,8 @@ The UI shell is authored as normal HTML in `src/ui/app.html` and imported by Vit
 summary and threat-table rows use native `<template>` elements, while TypeScript controllers
 clone those templates and assign dynamic values with `textContent`. This keeps HTML out of
 long TypeScript strings without adding a client framework or runtime templating dependency.
+The theme initializer applies semantic CSS color tokens to native controls, status displays,
+map overlays, and Leaflet controls, and stores only the selected theme name in local storage.
 
 ## Deployment
 

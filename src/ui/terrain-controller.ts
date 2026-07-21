@@ -32,6 +32,7 @@ export class TerrainController {
   private readonly persistentFileSupported = supportsPersistentFilePicker();
   private terrainMetadata: TerrainMetadata | null = null;
   private rememberedFileName: string | null = null;
+  private rememberedFileLookupComplete = !this.persistentFileSupported;
   private started = false;
 
   /**
@@ -67,6 +68,14 @@ export class TerrainController {
   }
 
   /**
+   * Reports whether the startup check for a remembered terrain file has finished.
+   * @returns `true` once remembered-file availability is known.
+   */
+  public get rememberedTerrainLookupComplete(): boolean {
+    return this.rememberedFileLookupComplete;
+  }
+
+  /**
    * Attempts the one-time, non-interactive restoration of a remembered terrain file.
    * @returns Nothing.
    */
@@ -75,7 +84,10 @@ export class TerrainController {
       return;
     }
     this.started = true;
-    void this.restoreRememberedTerrain({ requestPermission: false, startup: true });
+    void this.restoreRememberedTerrain({ requestPermission: false, startup: true }).finally(() => {
+      this.rememberedFileLookupComplete = true;
+      this.options.onStateChanged();
+    });
   }
 
   private bindControls(): void {

@@ -16,6 +16,8 @@ import type { GeolocationStatus } from '../services/geolocation';
 import { cloneTemplate, getElement, setText } from './dom';
 
 const FEET_PER_METER = 3.280839895;
+const ELEVATION_DOWNLOAD_URL =
+  'https://1drv.ms/i/c/e4440e9fda796b83/IQC-MS0bzl02RYfhc9KcbcbpAcShtwlbw3aEe6shDZO69ks?e=sFnxux';
 let highlightTimer: number | null = null;
 
 export type MessageTone = 'normal' | 'warning' | 'error';
@@ -27,6 +29,7 @@ export interface AppViewModel {
   terrainMetadata: TerrainMetadata | null;
   persistentTerrainSupported: boolean;
   rememberedTerrainFileName: string | null;
+  rememberedTerrainLookupComplete: boolean;
   aircraftState: AircraftState | null;
   lastAircraftTerrainReason: string | null;
   geolocationStatus: GeolocationStatus;
@@ -45,6 +48,7 @@ interface SummaryRow {
   label: string;
   value: string;
   valueClass?: 'muted' | 'warn' | 'bad';
+  valueLink?: string;
 }
 
 /**
@@ -54,8 +58,6 @@ interface SummaryRow {
  */
 export function renderApp(model: AppViewModel): void {
   renderWarningCalls(model);
-  setText('emulatorState', model.emulatorActive ? 'ACTIVE' : 'STOPPED');
-  getElement('emulatorState').classList.toggle('active', model.emulatorActive);
   updateEvaluationCountdown(model);
 
   const messageElement = getElement('appMessage');
@@ -201,9 +203,16 @@ function buildTerrainRows(model: AppViewModel): SummaryRow[] {
   if (!model.terrainMetadata) {
     rows.push({
       label: 'GeoTIFF',
-      value: getElement<HTMLInputElement>('terrainInput').files?.[0]?.name ?? 'Not loaded - LOS assumed clear',
+      value: getElement<HTMLInputElement>('terrainInput').files?.[0]?.name ?? 'Not loaded',
       valueClass: 'muted'
     });
+    if (model.rememberedTerrainLookupComplete && !model.rememberedTerrainFileName) {
+      rows.push({
+        label: 'Elevation file',
+        value: 'Download GeoTIFF',
+        valueLink: ELEVATION_DOWNLOAD_URL
+      });
+    }
   } else {
     rows.push({ label: 'GeoTIFF file', value: model.terrainMetadata.fileName });
     rows.push({
@@ -226,7 +235,16 @@ function renderSummaryRows(container: HTMLElement, rows: SummaryRow[]): void {
     const element = cloneTemplate<HTMLDivElement>('summaryRowTemplate');
     selectField(element, 'label').textContent = row.label;
     const value = selectField(element, 'value');
-    value.textContent = row.value;
+    if (row.valueLink) {
+      const link = document.createElement('a');
+      link.href = row.valueLink;
+      link.textContent = row.value;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      value.replaceChildren(link);
+    } else {
+      value.textContent = row.value;
+    }
     if (row.valueClass) {
       value.classList.add(row.valueClass);
     }

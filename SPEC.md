@@ -29,6 +29,7 @@ The application runs entirely in the browser, uses user-selected local files and
   100m steps, then 1km, 1.5km, 2km, and whole-kilometer buckets from 3km upward.
 - V1 includes a collapsible Leaflet map showing the latest aircraft position, all threat positions, and each threat's effective-range circle.
 - The map lets the user choose OpenStreetMap, OpenTopoMap, or Google satellite imagery when online. Leaflet controls and all aircraft/threat overlays remain available without tiles when offline.
+- The user can switch between a light white/black/grey/blue/red theme and a dark black/grey/white/green/red theme. Light is the first-visit default, and an explicit selection persists locally across launches.
 - The app should be installable as a PWA for offline launch.
 - CSV files are expected to be no larger than 1 MB.
 - GeoTIFF files are expected to be large, approximately 1-3 GB.
@@ -62,7 +63,7 @@ Final library selection should be confirmed during implementation, especially fo
 2. User imports a local threat scenery CSV, creates one or more threats manually, or does both sequentially.
 3. App validates imported or manually entered threats and displays the editable working threat list.
 4. For manual placement, the user enters WGS84 decimal-degree coordinates, MGRS, or a true bearing and distance from the aircraft.
-5. User may optionally select a local elevation GeoTIFF file.
+5. User may optionally select a local elevation GeoTIFF file. When no elevation file is loaded or remembered, the app offers a link to download one.
 6. If selected, the app validates GeoTIFF metadata, coordinate system, elevation units, and coverage.
 7. User grants geolocation permission, which is required for relative threat placement and emulator operation.
 8. App starts receiving aircraft GNSS fixes from the iPad.
@@ -73,6 +74,7 @@ Final library selection should be confirmed during implementation, especially fo
 13. User can see aircraft latitude/longitude, GPS altitude, height above ground level, GPS precision, and track status.
 14. User can expand the Map panel to view the aircraft, threats, and threat effective ranges, select OpenStreetMap, OpenTopoMap, or configured Google satellite imagery, and optionally keep the map centered on the latest aircraft position. The app shows the selected tiles while online and an overlay-only grid while offline.
 15. User can long press a map location on a touch device, or right-click it with a mouse, to open a new-threat form populated with that location and scroll the application to the editor. If a threat form is already visible, the gesture updates only its position, switches it to decimal-coordinate placement without resetting the other form values or current edit target, and scrolls back to the editor.
+16. User can switch between light and dark themes from the header; the app remembers the choice on the current device.
 
 ## Threat CSV Format
 
@@ -270,17 +272,19 @@ Required controls and displays:
 - Export CSV action visible only when at least one threat exists.
 - Threat editor for ID, description, height AGL, effective range, and decimal-degree, MGRS, or aircraft-relative placement.
 - Optional elevation GeoTIFF file picker.
+- Elevation GeoTIFF download link shown only while no elevation file is loaded or remembered.
 - Loaded data status and validation summary.
 - Geolocation permission/status indicator.
 - Current aircraft latitude, longitude, GPS altitude, calculated AGL, and GPS track.
 - Start / stop emulator control.
-- Current evaluation status.
+- Current evaluation status. The button label, warning area, and evaluation countdown convey whether the emulator is running; the header does not repeat that state in a separate status element.
+- Header-level toggle with a sun on the light side, a moon on the dark side, and a high-contrast thumb and track that indicate the active theme. Its tooltip and accessible label describe the theme that selecting it will activate, and its pressed state exposes whether dark mode is active.
 - Large warning text row for every active threat.
 - Threat validation/status summary.
-- Separate collapsible aircraft status and threat table panels, collapsed by default. The threat table uses two-line ID/description, distance/range, LOS/state, and actions columns. Activation conditions are color-coded: in-range distance, VLOS, and active state are green; out-of-range distance, BLOS, and inactive state are red. Values not yet evaluated use neutral placeholders, while unavailable states are amber.
+- Separate collapsible aircraft status and threat table panels, collapsed by default. The threat table uses two-line ID/description, distance/range, LOS/state, and actions columns. Activation conditions use the theme accent (blue in light mode and green in dark mode); out-of-range, BLOS, inactive, unavailable, warning, and error states use red. Values not yet evaluated use neutral grey placeholders.
 - On viewport widths above 900 px, Controls, Aircraft Status, and Threats are stacked in an independently vertically scrollable left column. The Map panel occupies the right column and, while expanded, stretches into the explicit remaining-height layout row so its map stays visible and fits below the header and warning area without creating page-level vertical overflow. At 900 px and below, the panels return to a single-column flow with the Map after the other panels. The `Base map` label, base-map selector, and `Center on aircraft` control share one toolbar row at every viewport width; the selector shrinks and the checkbox label may wrap on very narrow screens.
 - A separate collapsible Map panel, collapsed by default, containing:
-  - A blue top-down airplane marker at the latest GNSS position. Its nose follows GPS track when track is available and points north when track is unavailable.
+  - A theme-accented top-down airplane marker at the latest GNSS position: blue in light mode and green in dark mode. Its nose follows GPS track when track is available and points north when track is unavailable.
   - A red marker and identifier for every threat in the working list.
   - A red metric circle centered on each threat with radius equal to `range_km`.
   - Tooltips containing aircraft coordinates or threat description and effective range.
@@ -291,6 +295,8 @@ Required controls and displays:
   - An unchecked-by-default `Center on aircraft` checkbox. While selected, every aircraft-position update recenters the map without changing its zoom level. Manual map navigation automatically clears the checkbox so the map remains at the user's chosen view.
 
 The UI must be designed for iPad mini screen size and touch interaction.
+
+Theme colors are implemented through semantic tokens so native controls, panels, status text, the offline map grid, Leaflet controls, and existing map overlays update immediately without recreating application state. Only the theme identifier is stored in local storage; theme switching must continue for the current page when storage is unavailable.
 
 UI implementation responsibilities are separated by feature: the entry module only registers the service worker, mounts the shell, and starts a page-lifetime `ThreatEmulatorApp` instance. That class owns remaining mutable application state and top-level workflow orchestration. `TerrainController` owns terrain selection, persistent file restoration, and GeoTIFF loading, while `AircraftAltitudeController` owns EGM96 conversion, aircraft terrain sampling, AGL fallback state, and stale asynchronous-result protection. Dedicated UI modules own shell mounting, state rendering, threat editing, map lifecycle, and wake-lock lifecycle. Stateless altitude, parsing, geospatial, line-of-sight, evaluation, and warning rules remain domain functions. Dynamic user/file content is assigned as text rather than interpolated into HTML.
 
@@ -364,6 +370,7 @@ The app should show actionable errors for:
 
 Automated tests should cover:
 
+- Theme preference restoration, accessible toggle state, and persistence after switching.
 - Semicolon CSV parsing and validation.
 - Manual coordinate threat creation and validation.
 - MGRS-to-WGS84 threat creation and invalid-MGRS validation.
