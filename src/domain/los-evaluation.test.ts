@@ -3,7 +3,8 @@
  * Tests use deterministic aircraft/threat fixtures and an in-memory TerrainService double.
  */
 
-import { calculateAgl, evaluateThreats, resolveTerrainElevationM } from './evaluation';
+import { calculateAgl, resolveTerrainElevationM } from './altitude';
+import { evaluateThreats } from './evaluation';
 import {
   calculateTerrainSampleSpacingM,
   evaluateFlatEarthLineOfSight,

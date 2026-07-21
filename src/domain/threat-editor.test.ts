@@ -3,7 +3,11 @@
  * Tests call the domain builder directly with representative raw form strings.
  */
 
-import { buildThreatFromEditor, type ThreatEditorInput } from './threat-editor';
+import {
+  buildThreatFromEditor,
+  formatMgrsCoordinate,
+  type ThreatEditorInput
+} from './threat-editor';
 import { distanceMeters } from './geo';
 
 const coordinateInput: ThreatEditorInput = {
@@ -18,6 +22,18 @@ const coordinateInput: ThreatEditorInput = {
   bearingDegrees: '',
   distanceKm: ''
 };
+
+describe('formatMgrsCoordinate', () => {
+  it('formats a stored WGS84 threat position for editing at one-meter precision', () => {
+    expect(formatMgrsCoordinate({ latitude: 50.0755, longitude: 14.4378 })).toBe(
+      '33U VR 59772 47176'
+    );
+  });
+
+  it('returns null for polar coordinates outside the supported MGRS bands', () => {
+    expect(formatMgrsCoordinate({ latitude: 85, longitude: 14 })).toBeNull();
+  });
+});
 
 describe('buildThreatFromEditor', () => {
   it('builds a threat from WGS84 coordinates', () => {

@@ -3,7 +3,11 @@
  * Domain validation stays in `threat-editor`; application state changes are returned by callback.
  */
 
-import { buildThreatFromEditor, type ThreatPositionMode } from '../domain/threat-editor';
+import {
+  buildThreatFromEditor,
+  formatMgrsCoordinate,
+  type ThreatPositionMode
+} from '../domain/threat-editor';
 import type { AircraftState, Threat } from '../domain/types';
 import { getElement } from './dom';
 
@@ -95,7 +99,11 @@ export class ThreatEditorController {
     this.setInputValue('threatRangeKm', threat ? String(threat.rangeKm) : '');
     this.setInputValue('threatLatitude', threat ? String(threat.latitude) : '');
     this.setInputValue('threatLongitude', threat ? String(threat.longitude) : '');
-    this.setInputValue('threatMgrs', '');
+    const threatMgrs = threat ? formatMgrsCoordinate(threat) : null;
+    this.setInputValue('threatMgrs', threatMgrs ?? '');
+    if (threat && !threatMgrs) {
+      this.setSelectedPositionMode('coordinates');
+    }
     this.setInputValue('threatBearing', '');
     this.setInputValue('threatDistanceKm', '');
     getElement('threatEditorTitle').textContent = threat ? `Edit ${threat.id}` : 'Add threat';
@@ -160,6 +168,15 @@ export class ThreatEditorController {
   private selectedPositionMode(): ThreatPositionMode {
     const value = this.form.querySelector<HTMLInputElement>('input[name="positionMode"]:checked')?.value;
     return value === 'mgrs' || value === 'relative' ? value : 'coordinates';
+  }
+
+  private setSelectedPositionMode(mode: ThreatPositionMode): void {
+    const input = this.form.querySelector<HTMLInputElement>(
+      `input[name="positionMode"][value="${mode}"]`
+    );
+    if (input) {
+      input.checked = true;
+    }
   }
 
   private inputValue(id: string): string {

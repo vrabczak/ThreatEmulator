@@ -76,7 +76,7 @@ Google satellite imagery is optional and uses the official Google Maps JavaScrip
 
 For GitHub Pages, create a repository Actions secret named `GOOGLE_MAPS_API_KEY`. The deployment workflow exposes it to Vite only during the static build. Like all browser map keys, the built value is visible to clients, so HTTP-referrer and API restrictions are required. If no key is configured, the Google satellite option remains visible but disabled; OpenStreetMap and OpenTopoMap continue to work.
 
-The threat editor works without a CSV. Coordinate placement accepts decimal WGS84 latitude and longitude or an MGRS grid reference. MGRS input is converted to the center of its grid square in fixed WGS84 coordinates when saved. Relative placement similarly converts a true bearing and distance from the latest GNSS aircraft position into fixed WGS84 coordinates. The CSV schema remains decimal degrees only. Importing a CSV replaces the current threat list; the app asks for confirmation first when that list has local edits. When at least one threat exists, `Export CSV` downloads the current list, including all imported and manual edits, in the same decimal-degree schema.
+The threat editor works without a CSV. Coordinate placement accepts decimal WGS84 latitude and longitude or an MGRS grid reference. MGRS input is converted to the center of its grid square in fixed WGS84 coordinates when saved. When an existing threat is edited, the form derives and fills its one-meter MGRS reference from the stored position while retaining the decimal-degree values. Relative placement similarly converts a true bearing and distance from the latest GNSS aircraft position into fixed WGS84 coordinates. The CSV schema remains decimal degrees only. Importing a CSV replaces the current threat list; the app asks for confirmation first when that list has local edits. When at least one threat exists, `Export CSV` downloads the current list, including all imported and manual edits, in the same decimal-degree schema.
 
 The repository includes `fixtures/sample-threats.csv` as a small CSV example.
 
@@ -151,14 +151,21 @@ V1 does not model earth curvature, atmospheric refraction, or buildings. The map
 
 ```text
 src/
-  domain/       Core CSV parsing, geospatial math, warning, LOS, and evaluation logic
-  services/     Browser-facing geolocation, Leaflet map, and terrain service wrappers
-  ui/           Declarative HTML shell, native DOM templates, rendering, and UI controllers
+  domain/       Core altitude, CSV, geospatial, warning, LOS, and evaluation functions
+  services/     Browser-facing geolocation, aircraft-altitude, map, and terrain services
+  ui/           Declarative HTML shell, rendering, and feature UI controllers
   workers/      GeoTIFF terrain loading, sampling, and LOS worker code
-  main.ts       Application bootstrap and top-level state orchestration
+  main.ts       Minimal application bootstrap
+  threat-emulator-app.ts  Page-lifetime state and top-level workflow orchestration
 fixtures/       Sample threat CSV data
 public/         PWA icon and static assets
 ```
+
+`ThreatEmulatorApp` owns the remaining mutable application state and coordinates the feature
+controllers and browser services. `TerrainController` owns terrain selection, remembered-file
+restore, and GeoTIFF loading. `AircraftAltitudeController` owns EGM96 conversion, terrain
+sampling, AGL state, and stale asynchronous-result protection. Domain altitude, parsing,
+geospatial, line-of-sight, evaluation, and warning rules remain stateless TypeScript functions.
 
 The UI shell is authored as normal HTML in `src/ui/app.html` and imported by Vite. Repeated
 summary and threat-table rows use native `<template>` elements, while TypeScript controllers

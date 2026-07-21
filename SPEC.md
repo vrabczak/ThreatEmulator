@@ -123,7 +123,7 @@ The threat editor includes:
   - MGRS grid reference at any precision accepted by the converter.
   - True bearing from the aircraft in degrees, from `0` through `360`, and horizontal distance from the aircraft in kilometers.
 
-Coordinate and MGRS placement work without a CSV or aircraft position. MGRS input is case-insensitive, may contain spaces, and resolves to the center point of the referenced grid square. Relative placement requires a current GNSS aircraft position. When an MGRS or relative threat is saved, the app converts it to fixed WGS84 decimal-degree coordinates; the threat does not subsequently move with the aircraft. Editing an existing threat exposes its resolved decimal-degree coordinates.
+Coordinate and MGRS placement work without a CSV or aircraft position. MGRS input is case-insensitive, may contain spaces, and resolves to the center point of the referenced grid square. Relative placement requires a current GNSS aircraft position. When an MGRS or relative threat is saved, the app converts it to fixed WGS84 decimal-degree coordinates; the threat does not subsequently move with the aircraft. Editing an existing threat fills both its resolved decimal-degree coordinates and its one-meter MGRS grid reference. Positions in the polar regions unsupported by MGRS remain editable through decimal-degree coordinates.
 
 The editor accepts either a dot or comma decimal separator. It rejects missing required values, invalid MGRS references, coordinates outside WGS84 bounds, negative height/range/distance, invalid bearings, and IDs already used by another threat in the working list. Adding the first manual threat enables the same evaluation workflow as importing a CSV. Deleting the final threat while the emulator is active stops the emulator.
 
@@ -288,7 +288,7 @@ Required controls and displays:
 
 The UI must be designed for iPad mini screen size and touch interaction.
 
-UI implementation responsibilities are separated by feature: the entry module owns bootstrap and top-level orchestration, while dedicated UI modules own shell mounting, state rendering, threat editing, map lifecycle, and wake-lock lifecycle. Dynamic user/file content is assigned as text rather than interpolated into HTML.
+UI implementation responsibilities are separated by feature: the entry module only registers the service worker, mounts the shell, and starts a page-lifetime `ThreatEmulatorApp` instance. That class owns remaining mutable application state and top-level workflow orchestration. `TerrainController` owns terrain selection, persistent file restoration, and GeoTIFF loading, while `AircraftAltitudeController` owns EGM96 conversion, aircraft terrain sampling, AGL fallback state, and stale asynchronous-result protection. Dedicated UI modules own shell mounting, state rendering, threat editing, map lifecycle, and wake-lock lifecycle. Stateless altitude, parsing, geospatial, line-of-sight, evaluation, and warning rules remain domain functions. Dynamic user/file content is assigned as text rather than interpolated into HTML.
 
 ## Offline And PWA Behavior
 

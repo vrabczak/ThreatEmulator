@@ -3,7 +3,7 @@
  * Parsing depends on shared decimal/geodesy helpers and the third-party MGRS converter.
  */
 
-import { toPoint as mgrsToPoint } from 'mgrs';
+import { forward as pointToMgrs, toPoint as mgrsToPoint } from 'mgrs';
 import { parseDecimal } from './csv';
 import { destinationPoint } from './geo';
 import type { LatLon } from './geo';
@@ -27,6 +27,21 @@ export interface ThreatEditorInput {
 }
 
 export type ThreatEditorResult = { threat: Threat; errors: [] } | { errors: string[] };
+
+/**
+ * Formats a WGS84 position as a readable one-meter MGRS grid reference.
+ * @param location - WGS84 latitude and longitude to convert.
+ * @returns The spaced MGRS reference, or `null` when MGRS does not support the position.
+ */
+export function formatMgrsCoordinate(location: LatLon): string | null {
+  try {
+    const compact = pointToMgrs([location.longitude, location.latitude], 5);
+    return compact.replace(/^(\d{1,2}[A-Z])([A-Z]{2})(\d{5})(\d{5})$/, '$1 $2 $3 $4');
+  } catch {
+    // Standard MGRS excludes polar latitudes even though they are valid WGS84 positions.
+    return null;
+  }
+}
 
 /**
  * Validates editor fields and builds a normalized threat definition.
