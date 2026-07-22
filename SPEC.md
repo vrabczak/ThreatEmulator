@@ -28,7 +28,8 @@ The application runs entirely in the browser, uses user-selected local files and
 - Distance is displayed using standard threat range buckets: 100m through 900m in
   100m steps, then 1km, 1.5km, 2km, and whole-kilometer buckets from 3km upward.
 - V1 includes a collapsible Leaflet map showing the latest aircraft position, all threat positions, and each threat's effective-range circle.
-- The map uses Leaflet's collapsed in-map layer control to choose OpenStreetMap, OpenTopoMap, or configured Google satellite imagery when online. Leaflet controls and all aircraft/threat overlays remain available without tiles when offline.
+- The map uses Leaflet's collapsed in-map layer control to choose OpenStreetMap, OpenTopoMap, configured Mapy.com outdoor/aerial tiles, or configured Google satellite imagery when online. Leaflet controls and all aircraft/threat overlays remain available without tiles when offline.
+- Mapy.com outdoor is the initial base layer when `VITE_MAPY_API_KEY` is configured; otherwise OpenStreetMap is the initial base layer.
 - The user can switch between a light white/black/grey/blue/red theme and a dark black/grey/white/green/red theme. Light is the first-visit default, and an explicit selection persists locally across launches.
 - Header actions remain in the same row as the brand and aligned to the right edge on narrow displays.
 - The app should be installable as a PWA for offline launch.
@@ -44,6 +45,7 @@ The application runs entirely in the browser, uses user-selected local files and
 - Native HTML `<template>` elements for declarative UI markup and repeated dynamic rows. Vite imports the application shell from a dedicated HTML source file; TypeScript must not contain large HTML string literals.
 - Leaflet for the interactive situational map.
 - OpenStreetMap and OpenTopoMap raster tiles as keyless online background layers.
+- Mapy.com outdoor and aerial raster tiles through the REST Map Tiles API when a Mapy.com API key is configured.
 - Google satellite imagery through the official Google Maps JavaScript API and Leaflet GoogleMutant adapter when a Google browser API key is configured.
 - PWA support for offline launch.
 - Static production build deployed to GitHub Pages.
@@ -73,7 +75,7 @@ Final library selection should be confirmed during implementation, especially fo
 11. If one or more threats are active, the app displays one large visual warning row per active threat in first-appearance order.
 12. User can stop the emulator, import a replacement CSV, add/edit/delete individual threats, or export the current non-empty list.
 13. User can see aircraft latitude/longitude, GPS altitude, height above ground level, GPS precision, and track status.
-14. User can expand the Map panel to view the aircraft, threats, and threat effective ranges, select OpenStreetMap, OpenTopoMap, or configured Google satellite imagery through Leaflet's in-map layer button, and optionally keep the map centered on the latest aircraft position through a separate in-map Leaflet button. The app shows the selected tiles while online and an overlay-only grid while offline.
+14. User can expand the Map panel to view the aircraft, threats, and threat effective ranges, select OpenStreetMap, OpenTopoMap, configured Mapy.com outdoor/aerial tiles, or configured Google satellite imagery through Leaflet's in-map layer button, and optionally keep the map centered on the latest aircraft position through a separate in-map Leaflet button. The app shows the selected tiles while online and an overlay-only grid while offline.
 15. User can long press a map location on a touch device, or right-click it with a mouse, to open a new-threat form populated with that location and scroll the application to the editor. If a threat form is already visible, the gesture updates only its position, switches it to decimal-coordinate placement without resetting the other form values or current edit target, and scrolls back to the editor.
 16. User can switch between light and dark themes from the header; the app remembers the choice on the current device.
 
@@ -289,7 +291,8 @@ Required controls and displays:
   - A red marker and identifier for every threat in the working list.
   - A red metric circle centered on each threat with radius equal to `range_km`.
   - Tooltips containing aircraft coordinates or threat description and effective range.
-  - Leaflet's native collapsed layer control, displayed as an icon button in the map's upper-right corner, for OpenStreetMap, OpenTopoMap, and Google satellite. Google satellite remains visible but disabled with an API-key-required label when `VITE_GOOGLE_MAPS_API_KEY` is not configured.
+  - Leaflet's native collapsed layer control, displayed as an icon button in the map's upper-right corner, for OpenStreetMap, OpenTopoMap, Mapy.com outdoor, Mapy.com aerial, and Google satellite. The Mapy.com choices remain visible but disabled when `VITE_MAPY_API_KEY` is not configured; Google satellite behaves the same when `VITE_GOOGLE_MAPS_API_KEY` is not configured.
+  - Mapy.com copyright attribution and a clickable Mapy.com logo while either Mapy.com layer is displayed.
   - A legend with the map-placement gesture hint displayed beside it, plus a visible header-level connectivity state: `Online - map tiles available` or `Offline - overlays only`.
   - Long-press placement on touch devices and right-click placement with a mouse. The selected WGS84 coordinates open and populate a new-threat form, or replace only the position in an already-visible add/edit form, then scroll the application to that editor.
   - Automatic framing when the displayed aircraft/threat set changes, while preserving user pan and zoom during ordinary aircraft position updates.
@@ -307,8 +310,9 @@ UI implementation responsibilities are separated by feature: the entry module on
 - The app should be installable as a PWA.
 - Static app assets should be cached for offline launch.
 - Leaflet code and styles are bundled with the app and remain available offline.
-- The selected OpenStreetMap, OpenTopoMap, or configured Google satellite layer is added only while `navigator.onLine` reports online. The base layer is removed when the browser goes offline, leaving aircraft markers, threat markers, range circles, zoom/pan controls, and a neutral grid background available.
+- The selected OpenStreetMap, OpenTopoMap, configured Mapy.com outdoor/aerial, or configured Google satellite layer is added only while `navigator.onLine` reports online. The base layer is removed when the browser goes offline, leaving aircraft markers, threat markers, range circles, zoom/pan controls, and a neutral grid background available.
 - Returning online restores the selected base layer without requiring a page reload.
+- Mapy.com tiles use a browser-visible API key supplied through `VITE_MAPY_API_KEY`; production builds receive it through the `MAPY_API_KEY` GitHub Actions secret. The key must be restricted by HTTP referrer and to the Map Tiles API service.
 - Google satellite uses the official Google Maps JavaScript API, requires billing and an HTTP-referrer-restricted browser API key, and is not loaded until selected. Production builds receive the optional key through the `GOOGLE_MAPS_API_KEY` GitHub Actions secret.
 - User-selected CSV and GeoTIFF files remain local to the device.
 - Manually entered and locally edited threats remain in browser memory for the current page session; they are not uploaded or written back to the source CSV.
@@ -395,6 +399,6 @@ Manual test fixtures should include:
 - A small sample CSV.
 - Mocked or synthetic terrain grid data for LOS tests.
 - Known aircraft positions for out-of-range, in-range blocked, and in-range clear cases.
-- Online and offline Map panel checks confirming that Leaflet's layer icon selects OpenStreetMap, OpenTopoMap, and configured Google satellite imagery according to connectivity while aircraft markers, threat markers, range circles, tooltips, and controls remain available in both modes. Also confirm that the target-icon aircraft-follow button follows GNSS position updates at the current zoom, exposes its pressed state, and releases after manual pan or zoom.
+- Online and offline Map panel checks confirming that Leaflet's layer icon selects OpenStreetMap, OpenTopoMap, configured Mapy.com outdoor/aerial tiles, and configured Google satellite imagery according to connectivity while aircraft markers, threat markers, range circles, tooltips, and controls remain available in both modes. Confirm that Mapy.com layers show the required logo and copyright. Also confirm that the target-icon aircraft-follow button follows GNSS position updates at the current zoom, exposes its pressed state, and releases after manual pan or zoom.
 
 The repository should include the sample CSV fixture only. Large GeoTIFF fixtures should not be committed.

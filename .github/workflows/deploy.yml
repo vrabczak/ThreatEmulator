@@ -46,6 +46,7 @@ jobs:
         run: npm run build
         env:
           VITE_GOOGLE_MAPS_API_KEY: ${{ secrets.GOOGLE_MAPS_API_KEY }}
+          VITE_MAPY_API_KEY: ${{ secrets.MAPY_API_KEY }}
 
       - name: Setup Pages
         uses: actions/configure-pages@v6

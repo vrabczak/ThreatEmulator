@@ -490,6 +490,20 @@ button.theme-toggle:focus-visible {
   filter: drop-shadow(0 1px 1px var(--color-icon-shadow));
 }
 
+.leaflet-control-mapy-logo a,
+.leaflet-control-mapy-logo img {
+  display: block;
+}
+
+.leaflet-control-mapy-logo[hidden] {
+  display: none;
+}
+
+.leaflet-control-mapy-logo img {
+  width: auto;
+  height: 30px;
+}
+
 .leaflet-bar .leaflet-control-center-aircraft-button {
   display: grid;
   width: 30px;

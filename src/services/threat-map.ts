@@ -1,8 +1,8 @@
 /**
  * Renders aircraft and threat overlays on a Leaflet map with selectable online base layers.
- * It supports aircraft-following and threat-position gestures; Google imagery is loaded lazily
- * and requires a Vite-provided API key plus network connectivity. Overlay colors use the
- * semantic CSS variables defined by the application stylesheet.
+ * It supports aircraft-following and threat-position gestures; Google and Mapy.com imagery
+ * require Vite-provided API keys plus network connectivity. Overlay colors use the semantic
+ * CSS variables defined by the application stylesheet.
  */
 
 import L, { type Layer, type LayerGroup, type Map as LeafletMap } from 'leaflet';
@@ -16,13 +16,18 @@ const GOOGLE_MAPS_SCRIPT_ID = 'google-maps-javascript-api';
 const GOOGLE_MUTANT_SCRIPT_ID = 'leaflet-google-mutant';
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 
-type BaseMapId = 'street' | 'topographic' | 'google-satellite';
+type BaseMapId = 'street' | 'topographic' | 'mapy-outdoor' | 'mapy-aerial' | 'google-satellite';
+type MapyMapSet = 'outdoor' | 'aerial';
 
 const BASE_MAP_LABELS: Record<BaseMapId, string> = {
   street: 'OpenStreetMap',
   topographic: 'OpenTopoMap',
+  'mapy-outdoor': 'Mapy.com outdoor',
+  'mapy-aerial': 'Mapy.com aerial',
   'google-satellite': 'Google satellite'
 };
+
+const MAPY_ATTRIBUTION = '<a href="https://api.mapy.com/copyright" target="_blank" rel="noopener">&copy; Seznam.cz a.s. a další</a>';
 
 /** Callbacks used to pass map interactions back to the UI layer. */
 export interface ThreatMapOptions {
@@ -38,6 +43,7 @@ export class ThreatMap {
   private overlays: LayerGroup | null = null;
   private layerControl: L.Control.Layers | null = null;
   private centerControl: CenterOnAircraftControl | null = null;
+  private mapyLogoControl: MapyLogoControl | null = null;
   private readonly baseLayers = new Map<BaseMapId, Layer>();
   private readonly baseLayerIds = new Map<Layer, BaseMapId>();
   private googlePlaceholderLayer: Layer | null = null;
@@ -50,12 +56,15 @@ export class ThreatMap {
   private isProgrammaticMove = false;
   private latestAircraft: AircraftState | null = null;
   private readonly googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY?.trim() ?? '';
+  private readonly mapyApiKey = import.meta.env.VITE_MAPY_API_KEY?.trim() ?? '';
 
   /**
    * Creates the map service with a callback for user-selected threat positions.
    * @param options - Map interaction callbacks supplied by the UI controller.
    */
-  public constructor(private readonly options: ThreatMapOptions) {}
+  public constructor(private readonly options: ThreatMapOptions) {
+    this.selectedBaseMap = this.mapyApiKey ? 'mapy-outdoor' : 'street';
+  }
 
   /**
    * Initializes the map once or refreshes an already initialized map's connectivity and size.
@@ -210,6 +219,8 @@ export class ThreatMap {
         attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, SRTM | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)'
       })
     );
+    this.registerBaseLayer('mapy-outdoor', this.createMapyBaseLayer('outdoor'));
+    this.registerBaseLayer('mapy-aerial', this.createMapyBaseLayer('aerial'));
 
     // The empty layer gives Leaflet a native entry while Google stays lazily loaded until selected.
     this.googlePlaceholderLayer = L.layerGroup();
@@ -223,7 +234,9 @@ export class ThreatMap {
 
     const controlLayers: L.Control.LayersObject = {};
     for (const [id, layer] of this.baseLayers) {
-      const label = id === 'google-satellite' && !this.googleMapsApiKey
+      const keyMissing = (id === 'google-satellite' && !this.googleMapsApiKey) ||
+        (isMapyBaseMap(id) && !this.mapyApiKey);
+      const label = keyMissing
         ? `${BASE_MAP_LABELS[id]} (API key required)`
         : BASE_MAP_LABELS[id];
       controlLayers[label] = layer;
@@ -233,6 +246,9 @@ export class ThreatMap {
       position: 'topright'
     }).addTo(this.map);
     this.map.on('baselayerchange', (event) => this.handleBaseLayerChange(event));
+
+    this.mapyLogoControl = new MapyLogoControl().addTo(this.map);
+    this.mapyLogoControl.setVisible(false);
 
     this.centerControl = new CenterOnAircraftControl((enabled) => {
       this.centerOnAircraft = enabled;
@@ -258,6 +274,7 @@ export class ThreatMap {
     const revision = ++this.baseLayerRevision;
     if (!this.online) {
       this.map.removeLayer(event.layer);
+      this.mapyLogoControl?.setVisible(false);
       return;
     }
 
@@ -266,6 +283,8 @@ export class ThreatMap {
       void this.activateSelectedBaseLayer(revision);
       return;
     }
+
+    this.updateMapyLogoVisibility();
   }
 
   private async activateSelectedBaseLayer(revision: number): Promise<void> {
@@ -286,6 +305,7 @@ export class ThreatMap {
 
       this.removeBaseLayers();
       layer.addTo(this.map);
+      this.updateMapyLogoVisibility();
     } catch (error) {
       console.error('Unable to load the selected base map.', error);
       if (
@@ -310,6 +330,28 @@ export class ThreatMap {
         this.map.removeLayer(layer);
       }
     }
+    this.mapyLogoControl?.setVisible(false);
+  }
+
+  private createMapyBaseLayer(mapset: MapyMapSet): Layer {
+    if (!this.mapyApiKey) {
+      const placeholder = L.layerGroup();
+      // An unreachable zoom range keeps the configured choice visible but disabled.
+      const options = placeholder.options as L.LayerOptions & { minZoom?: number };
+      options.minZoom = Number.POSITIVE_INFINITY;
+      return placeholder;
+    }
+
+    const apiKey = encodeURIComponent(this.mapyApiKey);
+    return L.tileLayer(`https://api.mapy.com/v1/maptiles/${mapset}/256/{z}/{x}/{y}?apikey=${apiKey}`, {
+      minZoom: 0,
+      maxZoom: 20,
+      attribution: MAPY_ATTRIBUTION
+    });
+  }
+
+  private updateMapyLogoVisibility(): void {
+    this.mapyLogoControl?.setVisible(this.online && isMapyBaseMap(this.selectedBaseMap));
   }
 
   private getGoogleBaseLayer(): Promise<Layer> {
@@ -361,6 +403,63 @@ export class ThreatMap {
       move();
     } finally {
       this.isProgrammaticMove = false;
+    }
+  }
+}
+
+/**
+ * Displays the provider logo required while a Mapy.com base layer is active.
+ * The control remains mounted for the map lifetime and is hidden for other providers and offline mode.
+ */
+class MapyLogoControl extends L.Control {
+  private container: HTMLDivElement | null = null;
+
+  /** Creates the provider logo control in Leaflet's lower-left control stack. */
+  public constructor() {
+    super({ position: 'bottomleft' });
+  }
+
+  /**
+   * Builds the linked Mapy.com logo when Leaflet attaches the control.
+   * @param _map - Leaflet map receiving the control.
+   * @returns The provider-logo container managed by Leaflet.
+   */
+  public onAdd(_map: LeafletMap): HTMLElement {
+    const container = L.DomUtil.create('div', 'leaflet-control-mapy-logo');
+    container.hidden = true;
+    const link = document.createElement('a');
+    link.href = 'https://mapy.com/';
+    link.target = '_blank';
+    link.rel = 'noopener';
+    link.setAttribute('aria-label', 'Open Mapy.com');
+
+    const logo = document.createElement('img');
+    logo.src = 'https://api.mapy.com/img/api/logo.svg';
+    logo.alt = 'Mapy.com';
+    link.append(logo);
+    container.append(link);
+    L.DomEvent.disableClickPropagation(container);
+    this.container = container;
+    return container;
+  }
+
+  /**
+   * Releases the retained container when Leaflet detaches the control.
+   * @param _map - Leaflet map that owned the control.
+   * @returns Nothing.
+   */
+  public onRemove(_map: LeafletMap): void {
+    this.container = null;
+  }
+
+  /**
+   * Shows the provider logo only while Mapy.com tiles are displayed.
+   * @param visible - Whether the logo must be visible.
+   * @returns Nothing.
+   */
+  public setVisible(visible: boolean): void {
+    if (this.container) {
+      this.container.hidden = !visible;
     }
   }
 }
@@ -492,6 +591,10 @@ function loadGoogleMutant(): Promise<void> {
     'Unable to initialize the Google imagery layer.'
   );
   return googleMutantPromise;
+}
+
+function isMapyBaseMap(id: BaseMapId): boolean {
+  return id === 'mapy-outdoor' || id === 'mapy-aerial';
 }
 
 function loadScript(
