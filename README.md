@@ -9,6 +9,7 @@ The app is built with TypeScript, Vite, Vitest, Leaflet, `geotiff`, `papaparse`,
 - Runs entirely in the browser as a static single-page app.
 - Supports offline launch as a PWA after installation.
 - Switches between a light white/black/grey/blue/red theme and a dark black/grey/white/green/red theme, remembering the selection on the device.
+- Keeps header actions in the same row as the brand and aligned to the right edge on narrow screens.
 - Loads user-selected local threat CSV files and supports adding, editing, or deleting threats in the Threats panel.
 - Exports the current non-empty threat list as a semicolon-delimited CSV file.
 - Places manual threats by WGS84 decimal-degree coordinates, MGRS, or true bearing and distance from the latest aircraft position.
@@ -20,9 +21,9 @@ The app is built with TypeScript, Vite, Vitest, Leaflet, `geotiff`, `papaparse`,
 - Shows whether evaluation is running through the Start/Stop button, warning area, and evaluation countdown without a redundant header status badge.
 - Shows one equally prominent `DESCRIPTION CLOCK CODE DISTANCE` warning call for every active threat in first-appearance order.
 - Shows aircraft position, GPS altitude, height above ground, precision, track, validation status, and evaluation results.
-- Shows aircraft and threat positions with effective-range circles in a collapsible Leaflet map, with an optional center-on-aircraft mode that disengages when the map is moved manually.
+- Shows aircraft and threat positions with effective-range circles in a collapsible Leaflet map, with an in-map Leaflet button for center-on-aircraft mode that disengages when the map is moved manually.
 - Opens and scrolls to a coordinate-populated threat form by long pressing a map location, or right-clicking it with a mouse; repeating the gesture while a form is open updates only its position and scrolls back to it.
-- Lets the user choose OpenStreetMap, OpenTopoMap, or optionally Google satellite imagery while online, and keeps the map overlays available over a neutral grid when offline.
+- Uses Leaflet's collapsed in-map layer button to choose OpenStreetMap, OpenTopoMap, or optionally Google satellite imagery while online, and keeps the map overlays available over a neutral grid when offline.
 
 ## Requirements
 
@@ -72,15 +73,15 @@ npm run preview
 6. Wait for an aircraft position with GPS altitude.
 7. Start the emulator. Its running state is visible from the Stop button, warning area, and evaluation countdown; the header has no separate state badge.
 8. Read each active `DESCRIPTION CLOCK CODE DISTANCE` threat call in the warning area. Calls retain activation order while active; a threat that becomes inactive and later reactivates returns at the bottom. Threats first detected together use threat-list order.
-9. Expand the collapsed Aircraft Status, Threats, and Map panels as needed. On widescreen displays, Controls, Aircraft Status, and Threats form a separately scrollable left column while the Map panel fills the available screen height in the right column. Narrower displays use a single-column layout. The `Base map` label, base-map selector, and `Center on aircraft` control share one row at every layout width. The threat table is available before the emulator starts and shows each threat's ID/description, distance/range, LOS/state, and edit/delete actions.
-10. In the Map panel, choose OpenStreetMap, OpenTopoMap, or Google satellite as the base map. Red markers identify threats and their effective ranges. The top-down aircraft marker uses blue in the light theme and green in the dark theme. Its nose follows the available GPS track and points north when track is unavailable. Select `Center on aircraft` to keep the map centered as the position changes; manually panning or zooming the map clears the checkbox. The panel header reports online/offline connectivity without a separate provider-status message. Online tiles disappear while offline, but the same overlays remain usable over a neutral grid.
+9. Expand the collapsed Aircraft Status, Threats, and Map panels as needed. On widescreen displays, Controls, Aircraft Status, and Threats form a separately scrollable left column while the Map panel fills the available screen height in the right column. Narrower displays use a single-column layout. The threat table is available before the emulator starts and shows each threat's ID/description, distance/range, LOS/state, and edit/delete actions.
+10. In the Map panel, use Leaflet's layers icon in the upper-right corner to choose OpenStreetMap, OpenTopoMap, or configured Google satellite imagery. Red markers identify threats and their effective ranges. The top-down aircraft marker uses blue in the light theme and green in the dark theme. Its nose follows the available GPS track and points north when track is unavailable. Press the target icon below the zoom buttons to keep the map centered as the aircraft position changes; its accent background indicates that following is active. Manually panning or zooming releases following. The panel header reports online/offline connectivity. Online tiles disappear while offline, but the same overlays and controls remain usable over a neutral grid.
 11. Use the placement hint displayed beside the map legend: long press a desired map location on a touch device, or right-click it with a mouse, to open the Threats panel with a new-threat form in coordinate mode and scroll to it. When an add or edit form is already open, the gesture replaces its latitude and longitude without clearing any other values, then scrolls back to the form.
 
 ### Google satellite configuration
 
 Google satellite imagery is optional and uses the official Google Maps JavaScript API. Copy `.env.example` to `.env.local`, set `VITE_GOOGLE_MAPS_API_KEY`, and restart the development server or rebuild the app. The Google Cloud project must have billing and the Maps JavaScript API enabled. Restrict the browser key to the app's HTTP referrers before deployment.
 
-For GitHub Pages, create a repository Actions secret named `GOOGLE_MAPS_API_KEY`. The deployment workflow exposes it to Vite only during the static build. Like all browser map keys, the built value is visible to clients, so HTTP-referrer and API restrictions are required. If no key is configured, the Google satellite option remains visible but disabled; OpenStreetMap and OpenTopoMap continue to work.
+For GitHub Pages, create a repository Actions secret named `GOOGLE_MAPS_API_KEY`. The deployment workflow exposes it to Vite only during the static build. Like all browser map keys, the built value is visible to clients, so HTTP-referrer and API restrictions are required. If no key is configured, Google satellite remains visible but disabled in Leaflet's layer list with an API-key-required label; OpenStreetMap and OpenTopoMap continue to work.
 
 The threat editor works without a CSV. Coordinate placement accepts decimal WGS84 latitude and longitude or an MGRS grid reference. MGRS input is converted to the center of its grid square in fixed WGS84 coordinates when saved. When an existing threat is edited, the form derives and fills its one-meter MGRS reference from the stored position while retaining the decimal-degree values. Relative placement similarly converts a true bearing and distance from the latest GNSS aircraft position into fixed WGS84 coordinates. The CSV schema remains decimal degrees only. Importing a CSV replaces the current threat list; the app asks for confirmation first when that list has local edits. When at least one threat exists, `Export CSV` downloads the current list, including all imported and manual edits, in the same decimal-degree schema.
 

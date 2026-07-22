@@ -1,11 +1,11 @@
 /**
- * Owns Leaflet map lifecycle, base-map selection, aircraft-following controls,
- * threat-position gestures, and connectivity state.
+ * Owns Leaflet map lifecycle, threat-position gestures, and connectivity state.
+ * Native Leaflet controls inside the map own base-map selection and aircraft following.
  * It defers map creation until the collapsed map panel is opened to avoid hidden-size issues.
  */
 
 import type { AircraftState, Threat } from '../domain/types';
-import { ThreatMap, type BaseMapId } from '../services/threat-map';
+import { ThreatMap } from '../services/threat-map';
 import { getElement } from './dom';
 
 /** State accessors and interaction callbacks required by the Map panel. */
@@ -21,8 +21,6 @@ export interface MapControllerOptions {
 export class MapController {
   private readonly map: ThreatMap;
   private readonly panel = getElement<HTMLDetailsElement>('mapPanel');
-  private readonly baseLayer = getElement<HTMLSelectElement>('mapBaseLayer');
-  private readonly centerOnAircraft = getElement<HTMLInputElement>('centerMapOnAircraft');
 
   /**
    * Creates the controller and binds panel, provider, and connectivity events.
@@ -32,33 +30,16 @@ export class MapController {
     this.map = new ThreatMap({
       onCoordinateSelected: (latitude, longitude) => {
         this.options.onCoordinateSelected(latitude, longitude);
-      },
-      onManualMove: () => {
-        this.centerOnAircraft.checked = false;
-        this.map.setCenterOnAircraft(false, this.options.getAircraftState());
       }
     });
-    const googleSatelliteOption = getElement<HTMLOptionElement>('googleSatelliteOption');
-    googleSatelliteOption.disabled = !this.map.hasGoogleImagery();
-    if (googleSatelliteOption.disabled) {
-      googleSatelliteOption.textContent = 'Google satellite (API key required)';
-    }
 
     this.panel.addEventListener('toggle', () => {
       if (!this.panel.open) {
         return;
       }
       this.map.initialize(getElement('threatMap'), navigator.onLine);
-      void this.applyBaseLayer();
       this.update(this.options.getAircraftState(), this.options.getThreats());
       window.requestAnimationFrame(() => this.map.invalidateSize());
-    });
-    this.baseLayer.addEventListener('change', () => void this.applyBaseLayer());
-    this.centerOnAircraft.addEventListener('change', () => {
-      this.map.setCenterOnAircraft(
-        this.centerOnAircraft.checked,
-        this.options.getAircraftState()
-      );
     });
     window.addEventListener('online', () => this.handleConnectivityChange());
     window.addEventListener('offline', () => this.handleConnectivityChange());
@@ -77,7 +58,7 @@ export class MapController {
 
   private handleConnectivityChange(): void {
     this.renderConnectivity();
-    void this.applyBaseLayer();
+    this.map.setConnectivity(navigator.onLine);
   }
 
   private renderConnectivity(): void {
@@ -85,19 +66,5 @@ export class MapController {
     const status = getElement('mapConnectivity');
     status.textContent = online ? 'Online - map tiles available' : 'Offline - overlays only';
     status.classList.toggle('offline', !online);
-  }
-
-  private async applyBaseLayer(): Promise<void> {
-    try {
-      await this.map.setBaseMap(this.selectedBaseMap(), navigator.onLine);
-    } catch (error) {
-      // Provider failures remain diagnostic-only because the toolbar no longer displays transient status text.
-      console.error('Unable to load the selected base map.', error);
-    }
-  }
-
-  private selectedBaseMap(): BaseMapId {
-    const value = this.baseLayer.value;
-    return value === 'topographic' || value === 'google-satellite' ? value : 'street';
   }
 }

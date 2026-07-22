@@ -28,8 +28,9 @@ The application runs entirely in the browser, uses user-selected local files and
 - Distance is displayed using standard threat range buckets: 100m through 900m in
   100m steps, then 1km, 1.5km, 2km, and whole-kilometer buckets from 3km upward.
 - V1 includes a collapsible Leaflet map showing the latest aircraft position, all threat positions, and each threat's effective-range circle.
-- The map lets the user choose OpenStreetMap, OpenTopoMap, or Google satellite imagery when online. Leaflet controls and all aircraft/threat overlays remain available without tiles when offline.
+- The map uses Leaflet's collapsed in-map layer control to choose OpenStreetMap, OpenTopoMap, or configured Google satellite imagery when online. Leaflet controls and all aircraft/threat overlays remain available without tiles when offline.
 - The user can switch between a light white/black/grey/blue/red theme and a dark black/grey/white/green/red theme. Light is the first-visit default, and an explicit selection persists locally across launches.
+- Header actions remain in the same row as the brand and aligned to the right edge on narrow displays.
 - The app should be installable as a PWA for offline launch.
 - CSV files are expected to be no larger than 1 MB.
 - GeoTIFF files are expected to be large, approximately 1-3 GB.
@@ -72,7 +73,7 @@ Final library selection should be confirmed during implementation, especially fo
 11. If one or more threats are active, the app displays one large visual warning row per active threat in first-appearance order.
 12. User can stop the emulator, import a replacement CSV, add/edit/delete individual threats, or export the current non-empty list.
 13. User can see aircraft latitude/longitude, GPS altitude, height above ground level, GPS precision, and track status.
-14. User can expand the Map panel to view the aircraft, threats, and threat effective ranges, select OpenStreetMap, OpenTopoMap, or configured Google satellite imagery, and optionally keep the map centered on the latest aircraft position. The app shows the selected tiles while online and an overlay-only grid while offline.
+14. User can expand the Map panel to view the aircraft, threats, and threat effective ranges, select OpenStreetMap, OpenTopoMap, or configured Google satellite imagery through Leaflet's in-map layer button, and optionally keep the map centered on the latest aircraft position through a separate in-map Leaflet button. The app shows the selected tiles while online and an overlay-only grid while offline.
 15. User can long press a map location on a touch device, or right-click it with a mouse, to open a new-threat form populated with that location and scroll the application to the editor. If a threat form is already visible, the gesture updates only its position, switches it to decimal-coordinate placement without resetting the other form values or current edit target, and scrolls back to the editor.
 16. User can switch between light and dark themes from the header; the app remembers the choice on the current device.
 
@@ -282,17 +283,17 @@ Required controls and displays:
 - Large warning text row for every active threat.
 - Threat validation/status summary.
 - Separate collapsible aircraft status and threat table panels, collapsed by default. The threat table uses two-line ID/description, distance/range, LOS/state, and actions columns. Activation conditions use the theme accent (blue in light mode and green in dark mode); out-of-range, BLOS, inactive, unavailable, warning, and error states use red. Values not yet evaluated use neutral grey placeholders.
-- On viewport widths above 900 px, Controls, Aircraft Status, and Threats are stacked in an independently vertically scrollable left column. The Map panel occupies the right column and, while expanded, stretches into the explicit remaining-height layout row so its map stays visible and fits below the header and warning area without creating page-level vertical overflow. At 900 px and below, the panels return to a single-column flow with the Map after the other panels. The `Base map` label, base-map selector, and `Center on aircraft` control share one toolbar row at every viewport width; the selector shrinks and the checkbox label may wrap on very narrow screens.
+- On viewport widths above 900 px, Controls, Aircraft Status, and Threats are stacked in an independently vertically scrollable left column. The Map panel occupies the right column and, while expanded, stretches into the explicit remaining-height layout row so its map stays visible and fits below the header and warning area without creating page-level vertical overflow. At 900 px and below, the panels return to a single-column flow with the Map after the other panels. Map actions remain compact Leaflet controls inside the map at every viewport width.
 - A separate collapsible Map panel, collapsed by default, containing:
   - A theme-accented top-down airplane marker at the latest GNSS position: blue in light mode and green in dark mode. Its nose follows GPS track when track is available and points north when track is unavailable.
   - A red marker and identifier for every threat in the working list.
   - A red metric circle centered on each threat with radius equal to `range_km`.
   - Tooltips containing aircraft coordinates or threat description and effective range.
-  - A base-map selector for OpenStreetMap, OpenTopoMap, and Google satellite. Google satellite is disabled with an API-key-required label when `VITE_GOOGLE_MAPS_API_KEY` is not configured.
-  - A legend with the map-placement gesture hint displayed beside it, plus a visible header-level connectivity state: `Online - map tiles available` or `Offline - overlays only`. The map toolbar does not show a separate provider loading or selection status.
+  - Leaflet's native collapsed layer control, displayed as an icon button in the map's upper-right corner, for OpenStreetMap, OpenTopoMap, and Google satellite. Google satellite remains visible but disabled with an API-key-required label when `VITE_GOOGLE_MAPS_API_KEY` is not configured.
+  - A legend with the map-placement gesture hint displayed beside it, plus a visible header-level connectivity state: `Online - map tiles available` or `Offline - overlays only`.
   - Long-press placement on touch devices and right-click placement with a mouse. The selected WGS84 coordinates open and populate a new-threat form, or replace only the position in an already-visible add/edit form, then scroll the application to that editor.
   - Automatic framing when the displayed aircraft/threat set changes, while preserving user pan and zoom during ordinary aircraft position updates.
-  - An unchecked-by-default `Center on aircraft` checkbox. While selected, every aircraft-position update recenters the map without changing its zoom level. Manual map navigation automatically clears the checkbox so the map remains at the user's chosen view.
+  - An unpressed-by-default custom Leaflet target-icon button below the zoom control. While pressed, every aircraft-position update recenters the map without changing its zoom level. Its accent background and accessible pressed state expose following status. Manual map navigation automatically releases the button so the map remains at the user's chosen view.
 
 The UI must be designed for iPad mini screen size and touch interaction.
 
@@ -394,6 +395,6 @@ Manual test fixtures should include:
 - A small sample CSV.
 - Mocked or synthetic terrain grid data for LOS tests.
 - Known aircraft positions for out-of-range, in-range blocked, and in-range clear cases.
-- Online and offline Map panel checks confirming that OpenStreetMap, OpenTopoMap, and configured Google satellite selection follows connectivity while aircraft markers, threat markers, range circles, tooltips, and controls remain available in both modes. Also confirm that `Center on aircraft` follows GNSS position updates at the current zoom and clears after manual pan or zoom.
+- Online and offline Map panel checks confirming that Leaflet's layer icon selects OpenStreetMap, OpenTopoMap, and configured Google satellite imagery according to connectivity while aircraft markers, threat markers, range circles, tooltips, and controls remain available in both modes. Also confirm that the target-icon aircraft-follow button follows GNSS position updates at the current zoom, exposes its pressed state, and releases after manual pan or zoom.
 
 The repository should include the sample CSV fixture only. Large GeoTIFF fixtures should not be committed.

@@ -16,12 +16,17 @@ const GOOGLE_MAPS_SCRIPT_ID = 'google-maps-javascript-api';
 const GOOGLE_MUTANT_SCRIPT_ID = 'leaflet-google-mutant';
 const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 
-export type BaseMapId = 'street' | 'topographic' | 'google-satellite';
+type BaseMapId = 'street' | 'topographic' | 'google-satellite';
+
+const BASE_MAP_LABELS: Record<BaseMapId, string> = {
+  street: 'OpenStreetMap',
+  topographic: 'OpenTopoMap',
+  'google-satellite': 'Google satellite'
+};
 
 /** Callbacks used to pass map interactions back to the UI layer. */
 export interface ThreatMapOptions {
   onCoordinateSelected: (latitude: number, longitude: number) => void;
-  onManualMove: () => void;
 }
 
 /**
@@ -31,14 +36,19 @@ export interface ThreatMapOptions {
 export class ThreatMap {
   private map: LeafletMap | null = null;
   private overlays: LayerGroup | null = null;
+  private layerControl: L.Control.Layers | null = null;
+  private centerControl: CenterOnAircraftControl | null = null;
   private readonly baseLayers = new Map<BaseMapId, Layer>();
-  private activeBaseLayer: Layer | null = null;
+  private readonly baseLayerIds = new Map<Layer, BaseMapId>();
+  private googlePlaceholderLayer: Layer | null = null;
+  private googleLayerPromise: Promise<Layer> | null = null;
   private selectedBaseMap: BaseMapId = 'street';
   private online = false;
   private baseLayerRevision = 0;
   private lastFittedDataSignature = '';
   private centerOnAircraft = false;
   private isProgrammaticMove = false;
+  private latestAircraft: AircraftState | null = null;
   private readonly googleMapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY?.trim() ?? '';
 
   /**
@@ -51,10 +61,11 @@ export class ThreatMap {
    * Initializes the map once or refreshes an already initialized map's connectivity and size.
    * @param container - DOM element that hosts Leaflet.
    * @param online - Whether online base-layer requests are currently allowed.
+   * @returns Nothing.
    */
-  initialize(container: HTMLElement, online: boolean): void {
+  public initialize(container: HTMLElement, online: boolean): void {
     if (this.map) {
-      this.online = online;
+      this.setConnectivity(online);
       this.invalidateSize();
       return;
     }
@@ -74,82 +85,44 @@ export class ThreatMap {
       // Leaflet emits the same event for API-driven and user-driven navigation.
       if (this.centerOnAircraft && !this.isProgrammaticMove) {
         this.centerOnAircraft = false;
-        this.options.onManualMove();
+        this.centerControl?.setActive(false);
       }
     });
     this.overlays = L.layerGroup().addTo(this.map);
-    this.online = online;
+    this.initializeControls();
+    this.setConnectivity(online);
   }
 
   /**
-   * Enables or disables keeping the map centered on the latest aircraft position.
-   * @param enabled - Whether aircraft-following mode is active.
-   * @param aircraft - Latest aircraft state, or `null` before a fix is available.
+   * Applies browser connectivity to the selected Leaflet base layer.
+   * @param online - Whether online base-layer requests are currently allowed.
    * @returns Nothing.
    */
-  setCenterOnAircraft(enabled: boolean, aircraft: AircraftState | null): void {
-    this.centerOnAircraft = enabled;
-    if (enabled && aircraft) {
-      this.centerMapOnAircraft(aircraft);
-    }
-  }
-
-  /**
-   * Reports whether Google satellite imagery is configured.
-   * @returns Whether a non-empty Google Maps API key is available.
-   */
-  hasGoogleImagery(): boolean {
-    return this.googleMapsApiKey.length > 0;
-  }
-
-  /**
-   * Selects the desired base map and applies it when the browser is online.
-   * @param baseMap - Base-map provider to select.
-   * @param online - Whether online tile/script loading is currently allowed.
-   * @returns A promise that settles after the layer is loaded, applied, or superseded.
-   * @throws {Error} When Google imagery lacks an API key or a provider script cannot load.
-   */
-  async setBaseMap(baseMap: BaseMapId, online: boolean): Promise<void> {
-    if (baseMap === 'google-satellite' && !this.hasGoogleImagery()) {
-      throw new Error('Google satellite requires VITE_GOOGLE_MAPS_API_KEY.');
-    }
-
-    this.selectedBaseMap = baseMap;
+  public setConnectivity(online: boolean): void {
     this.online = online;
-    // Later selections invalidate slow provider loads so an obsolete layer cannot win the race.
+    // A connectivity change invalidates an in-flight lazy provider load before layers are restored.
     const revision = ++this.baseLayerRevision;
 
     if (!this.map) {
       return;
     }
 
-    if (this.activeBaseLayer) {
-      this.activeBaseLayer.removeFrom(this.map);
-      this.activeBaseLayer = null;
-    }
+    this.removeBaseLayers();
     if (!online) {
       return;
     }
 
-    const layer = await this.getBaseLayer(baseMap);
-    if (
-      revision !== this.baseLayerRevision ||
-      !this.map ||
-      !this.online ||
-      this.selectedBaseMap !== baseMap
-    ) {
-      return;
-    }
-    layer.addTo(this.map);
-    this.activeBaseLayer = layer;
+    void this.activateSelectedBaseLayer(revision);
   }
 
   /**
    * Rebuilds map overlays from current aircraft and threat state.
    * @param aircraft - Current aircraft state, or `null` before a fix is available.
    * @param threats - Threats to draw with markers and effective-range circles.
+   * @returns Nothing.
    */
-  update(aircraft: AircraftState | null, threats: Threat[]): void {
+  public update(aircraft: AircraftState | null, threats: Threat[]): void {
+    this.latestAircraft = aircraft;
     if (!this.map || !this.overlays) {
       return;
     }
@@ -210,9 +183,166 @@ export class ThreatMap {
     }
   }
 
-  /** Invalidates Leaflet's cached container size without panning the map. */
-  invalidateSize(): void {
+  /**
+   * Invalidates Leaflet's cached container size without panning the map.
+   * @returns Nothing.
+   */
+  public invalidateSize(): void {
     this.map?.invalidateSize({ pan: false });
+  }
+
+  private initializeControls(): void {
+    if (!this.map) {
+      return;
+    }
+
+    this.registerBaseLayer(
+      'street',
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+      })
+    );
+    this.registerBaseLayer(
+      'topographic',
+      L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+        maxZoom: 17,
+        attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, SRTM | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)'
+      })
+    );
+
+    // The empty layer gives Leaflet a native entry while Google stays lazily loaded until selected.
+    this.googlePlaceholderLayer = L.layerGroup();
+    if (!this.googleMapsApiKey) {
+      // Leaflet natively disables a layer outside its zoom range, so Infinity keeps the
+      // unconfigured provider visible but unavailable without custom selector markup.
+      const options = this.googlePlaceholderLayer.options as L.LayerOptions & { minZoom?: number };
+      options.minZoom = Number.POSITIVE_INFINITY;
+    }
+    this.registerBaseLayer('google-satellite', this.googlePlaceholderLayer);
+
+    const controlLayers: L.Control.LayersObject = {};
+    for (const [id, layer] of this.baseLayers) {
+      const label = id === 'google-satellite' && !this.googleMapsApiKey
+        ? `${BASE_MAP_LABELS[id]} (API key required)`
+        : BASE_MAP_LABELS[id];
+      controlLayers[label] = layer;
+    }
+    this.layerControl = L.control.layers(controlLayers, undefined, {
+      collapsed: true,
+      position: 'topright'
+    }).addTo(this.map);
+    this.map.on('baselayerchange', (event) => this.handleBaseLayerChange(event));
+
+    this.centerControl = new CenterOnAircraftControl((enabled) => {
+      this.centerOnAircraft = enabled;
+      if (enabled && this.latestAircraft) {
+        this.centerMapOnAircraft(this.latestAircraft);
+      }
+    }).addTo(this.map);
+  }
+
+  private registerBaseLayer(id: BaseMapId, layer: Layer): void {
+    this.baseLayers.set(id, layer);
+    this.baseLayerIds.set(layer, id);
+  }
+
+  private handleBaseLayerChange(event: L.LayersControlEvent): void {
+    const selectedId = this.baseLayerIds.get(event.layer);
+    if (!selectedId || !this.map) {
+      return;
+    }
+
+    this.selectedBaseMap = selectedId;
+    // A newer native layer selection must win if Google is still loading asynchronously.
+    const revision = ++this.baseLayerRevision;
+    if (!this.online) {
+      this.map.removeLayer(event.layer);
+      return;
+    }
+
+    if (selectedId === 'google-satellite' && event.layer === this.googlePlaceholderLayer) {
+      this.map.removeLayer(event.layer);
+      void this.activateSelectedBaseLayer(revision);
+      return;
+    }
+  }
+
+  private async activateSelectedBaseLayer(revision: number): Promise<void> {
+    const selectedId = this.selectedBaseMap;
+    try {
+      const layer = selectedId === 'google-satellite'
+        ? await this.getGoogleBaseLayer()
+        : this.baseLayers.get(selectedId);
+      if (
+        !layer ||
+        revision !== this.baseLayerRevision ||
+        !this.map ||
+        !this.online ||
+        this.selectedBaseMap !== selectedId
+      ) {
+        return;
+      }
+
+      this.removeBaseLayers();
+      layer.addTo(this.map);
+    } catch (error) {
+      console.error('Unable to load the selected base map.', error);
+      if (
+        revision === this.baseLayerRevision &&
+        this.map &&
+        this.online &&
+        this.selectedBaseMap === selectedId
+      ) {
+        this.selectedBaseMap = 'street';
+        const fallback = this.baseLayers.get('street');
+        fallback?.addTo(this.map);
+      }
+    }
+  }
+
+  private removeBaseLayers(): void {
+    if (!this.map) {
+      return;
+    }
+    for (const layer of this.baseLayers.values()) {
+      if (this.map.hasLayer(layer)) {
+        this.map.removeLayer(layer);
+      }
+    }
+  }
+
+  private getGoogleBaseLayer(): Promise<Layer> {
+    const registeredLayer = this.baseLayers.get('google-satellite');
+    if (registeredLayer && registeredLayer !== this.googlePlaceholderLayer) {
+      return Promise.resolve(registeredLayer);
+    }
+    if (!this.googleMapsApiKey) {
+      return Promise.reject(new Error('Google satellite requires VITE_GOOGLE_MAPS_API_KEY.'));
+    }
+
+    this.googleLayerPromise ??= this.createGoogleBaseLayer()
+      .then((layer) => {
+        if (this.googlePlaceholderLayer) {
+          this.layerControl?.removeLayer(this.googlePlaceholderLayer);
+          this.baseLayerIds.delete(this.googlePlaceholderLayer);
+        }
+        this.googlePlaceholderLayer = null;
+        this.registerBaseLayer('google-satellite', layer);
+        this.layerControl?.addBaseLayer(layer, BASE_MAP_LABELS['google-satellite']);
+        return layer;
+      })
+      .catch((error: unknown) => {
+        this.googleLayerPromise = null;
+        throw error;
+      });
+    return this.googleLayerPromise;
+  }
+
+  private async createGoogleBaseLayer(): Promise<Layer> {
+    await loadGoogleMaps(this.googleMapsApiKey);
+    await loadGoogleMutant();
+    return L.gridLayer.googleMutant({ type: 'satellite', maxZoom: 21 });
   }
 
   private centerMapOnAircraft(aircraft: AircraftState): void {
@@ -233,33 +363,104 @@ export class ThreatMap {
       this.isProgrammaticMove = false;
     }
   }
+}
 
-  private async getBaseLayer(baseMap: BaseMapId): Promise<Layer> {
-    const existing = this.baseLayers.get(baseMap);
-    if (existing) {
-      return existing;
-    }
+/**
+ * Adds a Leaflet bar button that toggles continuous aircraft-following state.
+ * The control owns only its pressed presentation; ThreatMap applies centering and clears it on manual moves.
+ */
+class CenterOnAircraftControl extends L.Control {
+  private button: HTMLButtonElement | null = null;
+  private active = false;
 
-    let layer: Layer;
-    if (baseMap === 'street') {
-      layer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        maxZoom: 19,
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-      });
-    } else if (baseMap === 'topographic') {
-      layer = L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-        maxZoom: 17,
-        attribution: 'Map data: &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, SRTM | Map style: &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)'
-      });
-    } else {
-      await loadGoogleMaps(this.googleMapsApiKey);
-      await loadGoogleMutant();
-      layer = L.gridLayer.googleMutant({ type: 'satellite', maxZoom: 21 });
-    }
-
-    this.baseLayers.set(baseMap, layer);
-    return layer;
+  /**
+   * Creates the control with an application callback for pressed-state changes.
+   * @param onToggle - Called with the next following state after the user activates the button.
+   */
+  public constructor(private readonly onToggle: (enabled: boolean) => void) {
+    super({ position: 'topleft' });
   }
+
+  /**
+   * Builds the control button when Leaflet attaches it to a map.
+   * @param _map - Leaflet map receiving the control.
+   * @returns The control container managed by Leaflet.
+   */
+  public onAdd(_map: LeafletMap): HTMLElement {
+    const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control-center-aircraft');
+    const button = document.createElement('button');
+    button.className = 'leaflet-control-center-aircraft-button';
+    button.type = 'button';
+    button.append(buildCenterAircraftIcon());
+    button.addEventListener('click', this.handleClick);
+    container.append(button);
+    L.DomEvent.disableClickPropagation(container);
+    L.DomEvent.disableScrollPropagation(container);
+    this.button = button;
+    this.render();
+    return container;
+  }
+
+  /**
+   * Releases the DOM listener when Leaflet detaches the control.
+   * @param _map - Leaflet map that owned the control.
+   * @returns Nothing.
+   */
+  public onRemove(_map: LeafletMap): void {
+    this.button?.removeEventListener('click', this.handleClick);
+    this.button = null;
+  }
+
+  /**
+   * Synchronizes the visible pressed state without invoking the toggle callback.
+   * @param active - Whether continuous aircraft following is active.
+   * @returns Nothing.
+   */
+  public setActive(active: boolean): void {
+    this.active = active;
+    this.render();
+  }
+
+  private readonly handleClick = (event: MouseEvent): void => {
+    event.preventDefault();
+    event.stopPropagation();
+    this.setActive(!this.active);
+    this.onToggle(this.active);
+  };
+
+  private render(): void {
+    if (!this.button) {
+      return;
+    }
+    const description = this.active ? 'Stop centering on aircraft' : 'Center on aircraft';
+    this.button.setAttribute('aria-label', description);
+    this.button.setAttribute('aria-pressed', String(this.active));
+    this.button.title = description;
+  }
+}
+
+function buildCenterAircraftIcon(): SVGSVGElement {
+  const icon = document.createElementNS(SVG_NAMESPACE, 'svg');
+  icon.setAttribute('viewBox', '0 0 24 24');
+  icon.setAttribute('aria-hidden', 'true');
+  icon.setAttribute('focusable', 'false');
+
+  const outerCircle = document.createElementNS(SVG_NAMESPACE, 'circle');
+  outerCircle.setAttribute('cx', '12');
+  outerCircle.setAttribute('cy', '12');
+  outerCircle.setAttribute('r', '5');
+
+  const crosshair = document.createElementNS(SVG_NAMESPACE, 'path');
+  crosshair.setAttribute('d', 'M12 2v5M12 17v5M2 12h5M17 12h5');
+
+  const center = document.createElementNS(SVG_NAMESPACE, 'circle');
+  center.setAttribute('cx', '12');
+  center.setAttribute('cy', '12');
+  center.setAttribute('r', '1.5');
+  center.setAttribute('class', 'leaflet-control-center-aircraft-icon-center');
+
+  icon.append(outerCircle, crosshair, center);
+  return icon;
 }
 
 let googleMapsPromise: Promise<void> | null = null;

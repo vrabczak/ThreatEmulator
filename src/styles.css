@@ -369,56 +369,6 @@ button.theme-toggle:focus-visible {
   gap: 0.65rem;
 }
 
-.map-toolbar {
-  display: grid;
-  grid-template-columns: auto minmax(5rem, 1fr) auto;
-  align-items: center;
-  gap: 0.55rem 0.75rem;
-}
-
-.map-toolbar > label[for="mapBaseLayer"] {
-  grid-column: 1;
-  grid-row: 1;
-}
-
-.map-toolbar > select {
-  grid-column: 2;
-  grid-row: 1;
-}
-
-.map-toolbar label {
-  font-weight: 800;
-}
-
-.map-toolbar select {
-  width: 100%;
-  min-width: 0;
-  min-height: 2.75rem;
-  padding: 0.55rem 2.2rem 0.55rem 0.7rem;
-  border: 1px solid var(--color-border-strong);
-  border-radius: 6px;
-  color: var(--color-text);
-  background: var(--color-surface);
-  font: inherit;
-  font-weight: 700;
-}
-
-.map-follow-control {
-  display: inline-flex;
-  grid-column: 3;
-  grid-row: 1;
-  align-items: center;
-  gap: 0.45rem;
-  min-height: 2.75rem;
-  white-space: nowrap;
-}
-
-.map-follow-control input {
-  width: 1.2rem;
-  height: 1.2rem;
-  margin: 0;
-}
-
 .map-placement-hint {
   margin: 0;
   font-size: 0.86rem;
@@ -540,7 +490,56 @@ button.theme-toggle:focus-visible {
   filter: drop-shadow(0 1px 1px var(--color-icon-shadow));
 }
 
+.leaflet-bar .leaflet-control-center-aircraft-button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 4px;
+  color: #000000;
+  background: #ffffff;
+}
+
+.leaflet-control-center-aircraft-button svg {
+  width: 19px;
+  height: 19px;
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
+.leaflet-control-center-aircraft-button .leaflet-control-center-aircraft-icon-center {
+  fill: currentcolor;
+  stroke: none;
+}
+
+.leaflet-bar .leaflet-control-center-aircraft-button:hover,
+.leaflet-bar .leaflet-control-center-aircraft-button:focus-visible {
+  background: #f4f4f4;
+}
+
+.leaflet-bar .leaflet-control-center-aircraft-button:focus-visible {
+  outline: 2px solid var(--color-accent-strong);
+  outline-offset: 2px;
+}
+
+.leaflet-bar .leaflet-control-center-aircraft-button[aria-pressed="true"] {
+  color: var(--color-header-text);
+  background: var(--color-accent);
+}
+
+.leaflet-bar .leaflet-control-center-aircraft-button[aria-pressed="true"]:hover,
+.leaflet-bar .leaflet-control-center-aircraft-button[aria-pressed="true"]:focus-visible {
+  background: var(--color-accent-strong);
+}
+
 :root[data-theme="dark"] .leaflet-bar a,
+:root[data-theme="dark"] .leaflet-bar button,
 :root[data-theme="dark"] .leaflet-control-layers,
 :root[data-theme="dark"] .leaflet-popup-content-wrapper,
 :root[data-theme="dark"] .leaflet-popup-tip {
@@ -553,8 +552,20 @@ button.theme-toggle:focus-visible {
 }
 
 :root[data-theme="dark"] .leaflet-bar a:hover,
-:root[data-theme="dark"] .leaflet-bar a:focus-visible {
+:root[data-theme="dark"] .leaflet-bar a:focus-visible,
+:root[data-theme="dark"] .leaflet-bar button:hover,
+:root[data-theme="dark"] .leaflet-bar button:focus-visible {
   background: var(--color-surface-muted);
+}
+
+:root[data-theme="dark"] .leaflet-bar button[aria-pressed="true"] {
+  color: var(--color-header-text);
+  background: var(--color-accent);
+}
+
+:root[data-theme="dark"] .leaflet-bar button[aria-pressed="true"]:hover,
+:root[data-theme="dark"] .leaflet-bar button[aria-pressed="true"]:focus-visible {
+  background: var(--color-accent-strong);
 }
 
 :root[data-theme="dark"] .leaflet-control-attribution {
@@ -1048,7 +1059,7 @@ button.delete-action {
   .map-panel[open] > .map-panel-body {
     height: 100%;
     min-height: 0;
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-rows: minmax(0, 1fr) auto;
     overflow: hidden;
   }
 
@@ -1066,13 +1077,10 @@ button.delete-action {
 }
 
 @media (max-width: 700px) {
-  .topbar {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
   .topbar-actions {
-    width: 100%;
+    flex: 0 0 auto;
+    margin-left: auto;
+    justify-content: flex-end;
   }
 
   button.theme-toggle {
@@ -1105,11 +1113,4 @@ button.delete-action {
     grid-template-columns: 1fr 1fr;
   }
 
-  .map-follow-control {
-    white-space: normal;
-  }
-
-  .map-toolbar {
-    grid-template-columns: auto minmax(5rem, 1fr) minmax(0, 7rem);
-  }
 }
