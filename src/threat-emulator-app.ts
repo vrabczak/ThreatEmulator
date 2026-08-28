@@ -252,6 +252,7 @@ export class ThreatEmulatorApp {
     this.emulatorActive = true;
     this.activeThreatOrder = [];
     this.setMessage('Emulator active. Threats evaluate every 3 seconds.', 'normal');
+    getElement<HTMLDetailsElement>('controlsPanel').open = false;
     this.nextEvaluationAtMs = Date.now() + EVALUATION_INTERVAL_MS;
     void this.evaluateNow();
     this.evaluationTimer = window.setInterval(() => {

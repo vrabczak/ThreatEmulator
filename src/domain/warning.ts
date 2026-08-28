@@ -1,5 +1,5 @@
 /**
- * Builds concise cockpit-style warning text from threat geometry and evaluation state.
+ * Builds cockpit-style warning text and direction-only threat-display clock positions.
  * Bearing calculations use the aircraft's resolved true track and shared geodesy helpers.
  */
 
@@ -34,6 +34,39 @@ export function clockCodeForThreat(aircraft: AircraftState, threat: LatLon): num
 
   const bearingToThreat = initialBearingDegrees(aircraft, threat);
   return clockCodeFromRelativeBearing(relativeBearingDegrees(aircraft.trackDegrees, bearingToThreat));
+}
+
+/**
+ * Collects the occupied clock directions for active threats without considering distance.
+ * Multiple active threats in the same clock direction share one visual marker.
+ * @param results - Latest threat evaluation results.
+ * @param aircraft - Current aircraft state used for track-relative direction.
+ * @returns Unique clock codes ordered clockwise from 12, or an empty array without track.
+ */
+export function activeThreatClockCodes(
+  results: readonly ThreatEvaluationResult[],
+  aircraft: AircraftState | null
+): number[] {
+  if (!aircraft || aircraft.trackDegrees === null) {
+    return [];
+  }
+
+  const clockCodes = new Set<number>();
+  for (const result of results) {
+    if (result.state !== 'active') {
+      continue;
+    }
+    const clockCode = clockCodeForThreat(aircraft, result.threat);
+    if (clockCode !== null) {
+      clockCodes.add(clockCode);
+    }
+  }
+
+  return [...clockCodes].sort((left, right) => {
+    const leftClockwiseIndex = left === 12 ? 0 : left;
+    const rightClockwiseIndex = right === 12 ? 0 : right;
+    return leftClockwiseIndex - rightClockwiseIndex;
+  });
 }
 
 /**

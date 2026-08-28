@@ -5,6 +5,7 @@
 
 import { deriveTrackFromFixes, resolveTrack } from './track';
 import {
+  activeThreatClockCodes,
   buildThreatWarning,
   clockCodeFromRelativeBearing,
   reconcileActiveThreatOrder
@@ -83,6 +84,42 @@ describe('warning call', () => {
         { ...aircraft, trackDegrees: null }
       )
     ).toBe('T001 7 KM');
+  });
+
+  it('collects unique active clock directions without using distance', () => {
+    const duplicateDirection = {
+      ...activeResult,
+      threat: { ...activeResult.threat, id: 'T002' },
+      distanceKm: 0.1
+    };
+    const twelveOClock = {
+      ...activeResult,
+      threat: {
+        ...activeResult.threat,
+        id: 'T003',
+        latitude: 50.1,
+        longitude: 14
+      },
+      distanceKm: 100
+    };
+    const inactiveDirection = {
+      ...activeResult,
+      threat: {
+        ...activeResult.threat,
+        id: 'T004',
+        latitude: 49.9,
+        longitude: 14
+      },
+      state: 'inactive' as const
+    };
+
+    expect(
+      activeThreatClockCodes(
+        [activeResult, duplicateDirection, twelveOClock, inactiveDirection],
+        aircraft
+      )
+    ).toEqual([12, 3]);
+    expect(activeThreatClockCodes([activeResult], { ...aircraft, trackDegrees: null })).toEqual([]);
   });
 
   it('keeps first-appearance order and appends a reactivated threat', () => {

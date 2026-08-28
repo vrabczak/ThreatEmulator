@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Threat Emulator is a single-page offline web application written in TypeScript using Vite. It evaluates whether an aircraft is inside the effective envelope of terrain-based threats and displays a text message threat warning when the aircraft is within both threat range and line of sight.
+Threat Emulator is a single-page offline web application written in TypeScript using Vite. It evaluates whether an aircraft is inside the effective envelope of terrain-based threats and displays text and clock-face direction warnings when the aircraft is within both threat range and line of sight.
 
 The application runs entirely in the browser, uses user-selected local files and manually entered threat data, and is deployed as static production assets to GitHub Pages through GitHub Actions.
 
@@ -70,14 +70,15 @@ Final library selection should be confirmed during implementation, especially fo
 6. If selected, the app validates GeoTIFF metadata, coordinate system, elevation units, and coverage.
 7. User grants geolocation permission, which is required for relative threat placement and emulator operation.
 8. App starts receiving aircraft GNSS fixes from the iPad.
-9. User activates the emulator after at least one valid threat exists.
+9. User activates the emulator after at least one valid threat exists. A successful start automatically collapses the Controls panel while keeping Stop and current GNSS status visible.
 10. Every 3 seconds, the app evaluates the latest aircraft state against the current working threat list.
 11. If one or more threats are active, the app displays one large visual warning row per active threat in first-appearance order.
-12. User can stop the emulator, import a replacement CSV, add/edit/delete individual threats, or export the current non-empty list.
-13. User can see aircraft latitude/longitude, GPS altitude, height above ground level, GPS precision, and track status.
-14. User can expand the Map panel to view the aircraft, threats, and threat effective ranges, select OpenStreetMap, OpenTopoMap, configured Mapy.com outdoor/aerial tiles, or configured Google satellite imagery through Leaflet's in-map layer button, and optionally keep the map centered on the latest aircraft position through a separate in-map Leaflet button. The app shows the selected tiles while online and an overlay-only grid while offline.
-15. User can long press a map location on a touch device, or right-click it with a mouse, to open a new-threat form populated with that location and scroll the application to the editor. If a threat form is already visible, the gesture updates only its position, switches it to decimal-coordinate placement without resetting the other form values or current edit target, and scrolls back to the editor.
-16. User can switch between light and dark themes from the header; the app remembers the choice on the current device.
+12. The first left-column panel is an initially expanded Threat Display that places a red rocket at every occupied GPS-track-relative clock direction. Every rocket uses the same fixed radius, so the display communicates threat direction and existence without distance.
+13. User can stop the emulator, import a replacement CSV, add/edit/delete individual threats, or export the current non-empty list.
+14. User can see aircraft latitude/longitude, GPS altitude, height above ground level, GPS precision, and track status.
+15. User can expand the Map panel to view the aircraft, threats, and threat effective ranges, select OpenStreetMap, OpenTopoMap, configured Mapy.com outdoor/aerial tiles, or configured Google satellite imagery through Leaflet's in-map layer button, and optionally keep the map centered on the latest aircraft position through a separate in-map Leaflet button. The app shows the selected tiles while online and an overlay-only grid while offline.
+16. User can long press a map location on a touch device, or right-click it with a mouse, to open a new-threat form populated with that location and scroll the application to the editor. If a threat form is already visible, the gesture updates only its position, switches it to decimal-coordinate placement without resetting the other form values or current edit target, and scrolls back to the editor.
+17. User can switch between light and dark themes from the header; the app remembers the choice on the current device.
 
 ## Threat CSV Format
 
@@ -263,6 +264,12 @@ Multiple active threats:
 - Remove an inactive threat's row immediately; append its row at the bottom if it later reactivates.
 - Use configured threat-list order when multiple threats first activate in the same evaluation.
 
+## Threat Direction Display
+
+The first panel in the left column is a collapsible Threat Display and is open by default on each page load. Its black square scope follows the supplied cockpit-display reference with a white circular ring, twelve clock ticks, and a center dot.
+
+Each clock direction occupied by one or more active threats shows one small red rocket with a white outline. Clock positions use the same GPS-track-relative calculation as text warning calls. Rockets sit at a common fixed radius and do not encode or show distance, threat identity, or threat count. An active threat cannot be placed while aircraft track is unavailable; in that case the accessible display status reports that direction is unavailable rather than inventing a direction. The display exposes stopped, no-active-threat, unavailable-direction, and occupied-direction states to assistive technology without adding distance text to the scope.
+
 ## User Interface
 
 V1 uses a text/status warning interface with a secondary situational map. The map supplements the warning and evaluation table; it does not participate in threat activation or line-of-sight calculations.
@@ -283,9 +290,11 @@ Required controls and displays:
 - Current evaluation status. The button label, warning area, and evaluation countdown convey whether the emulator is running; the header does not repeat that state in a separate status element.
 - Header-level toggle with a sun on the light side, a moon on the dark side, and a high-contrast thumb and track that indicate the active theme. Its tooltip and accessible label describe the theme that selecting it will activate, and its pressed state exposes whether dark mode is active.
 - Large warning text row for every active threat.
+- First, default-open collapsible Threat Display panel with a direction-only clock face and red active-threat rockets.
 - Threat validation/status summary.
+- An initially expanded, collapsible Controls panel for messages, threat and terrain import, and wake-lock control. Expanded content must shrink or wrap within the panel at every supported viewport width. A separate run strip remains visible in both panel states with Start/Stop and GNSS status. Successful emulator activation collapses the setup content automatically; the user can reopen it while running, and stopping does not override the current panel state.
 - Separate collapsible aircraft status and threat table panels, collapsed by default. The threat table uses two-line ID/description, distance/range, LOS/state, and actions columns. Activation conditions use the theme accent (blue in light mode and green in dark mode); out-of-range, BLOS, inactive, unavailable, warning, and error states use red. Values not yet evaluated use neutral grey placeholders.
-- On viewport widths above 900 px, Controls, Aircraft Status, and Threats are stacked in an independently vertically scrollable left column. The Map panel occupies the right column and, while expanded, stretches into the explicit remaining-height layout row so its map stays visible and fits below the header and warning area without creating page-level vertical overflow. At 900 px and below, the panels return to a single-column flow with the Map after the other panels. Map actions remain compact Leaflet controls inside the map at every viewport width.
+- On viewport widths above 900 px, Threat Display, Controls, Aircraft Status, and Threats are stacked in an independently vertically scrollable left column. The Map panel occupies the right column and, while expanded, stretches into the explicit remaining-height layout row so its map stays visible and fits below the header and warning area without creating page-level vertical overflow. At 900 px and below, the panels return to a single-column flow with the Map after the other panels. Map actions remain compact Leaflet controls inside the map at every viewport width.
 - A separate collapsible Map panel, collapsed by default, containing:
   - A theme-accented top-down airplane marker at the latest GNSS position: blue in light mode and green in dark mode. Its nose follows GPS track when track is available and points north when track is unavailable.
   - A red marker and identifier for every threat in the working list.
@@ -393,6 +402,7 @@ Automated tests should cover:
 - No-elevation-model behavior where LOS is assumed clear and range is the only activation factor.
 - Threat activation logic.
 - Multiple-active-threat warning count and first-appearance ordering, including reactivation at the end.
+- Direction-display clock-code selection, duplicate-direction collapsing, distance independence, and unavailable-track behavior.
 
 Manual test fixtures should include:
 

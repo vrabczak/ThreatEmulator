@@ -4,7 +4,7 @@
  */
 
 import { formatThreatRange } from '../domain/geo';
-import { buildThreatWarning } from '../domain/warning';
+import { activeThreatClockCodes, buildThreatWarning } from '../domain/warning';
 import type {
   AircraftState,
   TerrainMetadata,
@@ -16,6 +16,9 @@ import type { GeolocationStatus } from '../services/geolocation';
 import { cloneTemplate, getElement, setText } from './dom';
 
 const FEET_PER_METER = 3.280839895;
+const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
+const THREAT_SCOPE_CENTER = 120;
+const THREAT_MARKER_RADIUS = 69;
 const ELEVATION_DOWNLOAD_URL =
   'https://1drv.ms/i/c/e4440e9fda796b83/IQC-MS0bzl02RYfhc9KcbcbpAcShtwlbw3aEe6shDZO69ks?e=sFnxux';
 let highlightTimer: number | null = null;
@@ -57,6 +60,7 @@ interface SummaryRow {
  * @returns Nothing.
  */
 export function renderApp(model: AppViewModel): void {
+  renderThreatDisplay(model);
   renderWarningCalls(model);
   updateEvaluationCountdown(model);
 
@@ -97,6 +101,41 @@ export function renderApp(model: AppViewModel): void {
   stayAwakeButton.textContent = model.wakeLockActive ? 'Allow sleep' : 'Stay awake';
   stayAwakeButton.setAttribute('aria-pressed', String(model.wakeLockActive));
   stayAwakeButton.classList.toggle('awake-active', model.wakeLockActive);
+}
+
+function renderThreatDisplay(model: AppViewModel): void {
+  const activeResults = model.emulatorActive ? model.lastEvaluation?.active ?? [] : [];
+  const clockCodes = activeThreatClockCodes(activeResults, model.aircraftState);
+  const fragment = document.createDocumentFragment();
+
+  for (const clockCode of clockCodes) {
+    // Clock positions are fixed to a common radius: only direction, never threat distance, affects placement.
+    const rotationDegrees = (clockCode % 12) * 30;
+    const rotationRadians = rotationDegrees * Math.PI / 180;
+    const markerX = THREAT_SCOPE_CENTER + Math.sin(rotationRadians) * THREAT_MARKER_RADIUS;
+    const markerY = THREAT_SCOPE_CENTER - Math.cos(rotationRadians) * THREAT_MARKER_RADIUS;
+    const marker = document.createElementNS(SVG_NAMESPACE, 'use');
+    marker.setAttribute('href', '#threatRocketGlyph');
+    marker.setAttribute('class', 'threat-direction-marker');
+    marker.setAttribute(
+      'transform',
+      `translate(${markerX.toFixed(2)} ${markerY.toFixed(2)}) rotate(${rotationDegrees})`
+    );
+    marker.setAttribute('aria-hidden', 'true');
+    fragment.append(marker);
+  }
+
+  getElement('threatDirectionMarkers').replaceChildren(fragment);
+  const status = getElement('threatDisplayStatus');
+  if (!model.emulatorActive) {
+    status.textContent = 'Emulator stopped. No threat directions displayed.';
+  } else if (activeResults.length === 0) {
+    status.textContent = 'No active threat.';
+  } else if (clockCodes.length === 0) {
+    status.textContent = 'Active threat direction unavailable because aircraft track is unavailable.';
+  } else {
+    status.textContent = `Active threat ${clockCodes.length === 1 ? 'direction' : 'directions'}: ${clockCodes.map((clockCode) => `${clockCode} o'clock`).join(', ')}.`;
+  }
 }
 
 function renderWarningCalls(model: AppViewModel): void {
@@ -149,24 +188,28 @@ export function updateEvaluationCountdown(
 }
 
 /**
- * Animates the warning and threat panels after a completed evaluation.
+ * Animates the warning, direction display, and threat table after a completed evaluation.
  * @returns Nothing.
  */
 export function highlightNewEvaluation(): void {
   const warningBand = getElement('warningBand');
+  const threatDisplayPanel = getElement('threatDisplayPanel');
   const evaluationPanel = getElement('evaluationPanel');
 
   if (highlightTimer !== null) {
     window.clearTimeout(highlightTimer);
   }
   warningBand.classList.remove('evaluation-updated');
+  threatDisplayPanel.classList.remove('evaluation-updated');
   evaluationPanel.classList.remove('evaluation-updated');
   // Reading layout restarts the CSS animation even when evaluations complete close together.
   void warningBand.offsetWidth;
   warningBand.classList.add('evaluation-updated');
+  threatDisplayPanel.classList.add('evaluation-updated');
   evaluationPanel.classList.add('evaluation-updated');
   highlightTimer = window.setTimeout(() => {
     warningBand.classList.remove('evaluation-updated');
+    threatDisplayPanel.classList.remove('evaluation-updated');
     evaluationPanel.classList.remove('evaluation-updated');
     highlightTimer = null;
   }, 900);

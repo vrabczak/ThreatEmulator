@@ -312,6 +312,21 @@ button.theme-toggle:focus-visible {
   background: var(--color-surface);
 }
 
+.controls-panel-details,
+.controls-panel-details > .panel-body,
+.controls-panel-details .controls,
+.controls-panel-details .field,
+.controls-panel-details .file-picker-control,
+.controls-run-strip,
+.controls-run-strip > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.controls-panel-details {
+  width: 100%;
+}
+
 .map-panel {
   min-width: 0;
 }
@@ -353,6 +368,70 @@ button.theme-toggle:focus-visible {
 
 .panel-title {
   flex: 1 1 auto;
+}
+
+.threat-display-body {
+  place-items: center;
+  padding: 0.75rem;
+}
+
+.threat-scope {
+  width: min(100%, 18rem);
+  height: auto;
+  display: block;
+  aspect-ratio: 1;
+  color: #ffffff;
+  background: #050505;
+  border: 1px solid #1f2937;
+  border-radius: 4px;
+}
+
+.threat-scope-background {
+  fill: #050505;
+}
+
+.threat-scope-ring,
+.threat-scope-ticks {
+  fill: none;
+  stroke: currentcolor;
+  stroke-linecap: square;
+  vector-effect: non-scaling-stroke;
+}
+
+.threat-scope-ring {
+  stroke-width: 2.5;
+}
+
+.threat-scope-ticks {
+  stroke-width: 2.25;
+}
+
+.threat-scope-center {
+  fill: currentcolor;
+}
+
+.threat-rocket-glyph {
+  fill: #ef172f;
+  stroke: #ffffff;
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  paint-order: stroke fill;
+}
+
+.threat-direction-marker {
+  filter: drop-shadow(0 1px 2px rgb(0 0 0 / 75%));
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .map-connectivity {
@@ -602,6 +681,32 @@ button.theme-toggle:focus-visible {
   gap: 0.75rem;
 }
 
+.controls-run-strip {
+  display: grid;
+  grid-template-columns: minmax(7rem, 0.4fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.75rem 0.9rem;
+  border-top: 1px solid var(--color-surface-muted);
+}
+
+.controls-gnss-status {
+  min-width: 0;
+}
+
+.controls-gnss-status .summary-row {
+  align-items: center;
+  padding: 0;
+  border-bottom: 0;
+}
+
+.controls-gnss-status strong {
+  min-width: 0;
+  color: var(--color-text-secondary);
+  font-size: 0.9rem;
+  text-align: right;
+}
+
 .field {
   display: grid;
   gap: 0.35rem;
@@ -647,12 +752,6 @@ button.theme-toggle:focus-visible {
   border: 0;
   opacity: 0;
   pointer-events: none;
-}
-
-.button-row {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 0.65rem;
 }
 
 button {
@@ -739,8 +838,15 @@ button:disabled {
 }
 
 .file-picker-status .summary-row {
+  min-width: 0;
+  flex-wrap: wrap;
   gap: 0.5rem;
   padding: 0.25rem 0;
+}
+
+.file-picker-status .summary-row strong {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .status-grid {
@@ -1106,10 +1212,14 @@ button.delete-action {
     min-height: 5.5rem;
   }
 
-  .button-row,
+  .controls-run-strip,
   .status-grid,
   .editor-grid {
     grid-template-columns: 1fr;
+  }
+
+  .controls-gnss-status strong {
+    text-align: left;
   }
 
   .threat-toolbar {

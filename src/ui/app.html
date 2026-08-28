@@ -43,38 +43,81 @@
 
   <section class="content">
     <div class="left-panel-stack">
-      <div class="panel">
-      <div class="panel-header">Controls</div>
-      <div class="panel-body">
-        <div id="appMessage" class="message"></div>
+      <details id="threatDisplayPanel" class="panel collapsible-panel threat-display-panel" open>
+        <summary class="panel-header">Threat Display</summary>
+        <div class="panel-body threat-display-body">
+          <svg
+            class="threat-scope"
+            viewBox="0 0 240 240"
+            role="img"
+            aria-labelledby="threatDisplayTitle"
+            aria-describedby="threatDisplayStatus"
+          >
+            <title id="threatDisplayTitle">Threat direction display</title>
+            <defs>
+              <g id="threatRocketGlyph" class="threat-rocket-glyph">
+                <path d="M -4.5 -8 H 4.5 V 5 Q 4 11 0 16 Q -4 11 -4.5 5 Z"></path>
+                <path d="M -4 2 L -10 9 L -9 14 L -2 9 Z M 4 2 L 10 9 L 9 14 L 2 9 Z"></path>
+                <path d="M -3.2 -8 L -5.5 -14 L -1.5 -12 L 0 -17 L 1.5 -12 L 5.5 -14 L 3.2 -8 Z"></path>
+              </g>
+            </defs>
+            <rect class="threat-scope-background" width="240" height="240" rx="4"></rect>
+            <circle class="threat-scope-ring" cx="120" cy="120" r="102"></circle>
+            <g class="threat-scope-ticks" aria-hidden="true">
+              <line x1="120" y1="18" x2="120" y2="31"></line>
+              <line x1="120" y1="18" x2="120" y2="27" transform="rotate(30 120 120)"></line>
+              <line x1="120" y1="18" x2="120" y2="27" transform="rotate(60 120 120)"></line>
+              <line x1="120" y1="18" x2="120" y2="31" transform="rotate(90 120 120)"></line>
+              <line x1="120" y1="18" x2="120" y2="27" transform="rotate(120 120 120)"></line>
+              <line x1="120" y1="18" x2="120" y2="27" transform="rotate(150 120 120)"></line>
+              <line x1="120" y1="18" x2="120" y2="31" transform="rotate(180 120 120)"></line>
+              <line x1="120" y1="18" x2="120" y2="27" transform="rotate(210 120 120)"></line>
+              <line x1="120" y1="18" x2="120" y2="27" transform="rotate(240 120 120)"></line>
+              <line x1="120" y1="18" x2="120" y2="31" transform="rotate(270 120 120)"></line>
+              <line x1="120" y1="18" x2="120" y2="27" transform="rotate(300 120 120)"></line>
+              <line x1="120" y1="18" x2="120" y2="27" transform="rotate(330 120 120)"></line>
+            </g>
+            <circle class="threat-scope-center" cx="120" cy="120" r="2.4"></circle>
+            <g id="threatDirectionMarkers"></g>
+          </svg>
+          <p id="threatDisplayStatus" class="visually-hidden" aria-live="polite">Emulator stopped.</p>
+        </div>
+      </details>
 
-        <div class="controls">
-          <div class="field">
-            <label for="csvInput">Threat CSV</label>
-            <input id="csvInput" class="file-input-fallback" type="file" accept=".csv,text/csv" aria-label="Threat CSV file" />
-            <div class="file-picker-control">
-              <button id="csvImportButton" class="file-import-button" type="button">Import</button>
-              <div id="csvImportStatus" class="file-picker-status" aria-live="polite">No file selected</div>
+      <div class="panel controls-panel">
+        <details id="controlsPanel" class="collapsible-panel controls-panel-details" open>
+          <summary class="panel-header">Controls</summary>
+          <div class="panel-body">
+            <div id="appMessage" class="message"></div>
+
+            <div class="controls">
+              <div class="field">
+                <label for="csvInput">Threat CSV</label>
+                <input id="csvInput" class="file-input-fallback" type="file" accept=".csv,text/csv" aria-label="Threat CSV file" />
+                <div class="file-picker-control">
+                  <button id="csvImportButton" class="file-import-button" type="button">Import</button>
+                  <div id="csvImportStatus" class="file-picker-status" aria-live="polite">No file selected</div>
+                </div>
+              </div>
+              <div class="field">
+                <span class="field-label">Elevation GeoTIFF</span>
+                <input id="terrainInput" class="file-input-fallback" type="file" accept=".tif,.tiff,image/tiff" aria-label="Elevation GeoTIFF file" />
+                <div class="file-picker-control">
+                  <button id="terrainImportButton" class="file-import-button" type="button">Import</button>
+                  <div id="terrainImportStatus" class="file-picker-status" aria-live="polite">No file selected</div>
+                </div>
+              </div>
+              <button id="stayAwakeButton" type="button" aria-pressed="false">Stay awake</button>
             </div>
           </div>
-          <div class="field">
-            <span class="field-label">Elevation GeoTIFF</span>
-            <input id="terrainInput" class="file-input-fallback" type="file" accept=".tif,.tiff,image/tiff" aria-label="Elevation GeoTIFF file" />
-            <div class="file-picker-control">
-              <button id="terrainImportButton" class="file-import-button" type="button">Import</button>
-              <div id="terrainImportStatus" class="file-picker-status" aria-live="polite">No file selected</div>
-            </div>
-          </div>
-          <div class="button-row">
-            <button id="startStopButton" class="primary" type="button">Start</button>
-            <button id="stayAwakeButton" type="button" aria-pressed="false">Stay awake</button>
-          </div>
-        </div>
+        </details>
 
-        <div class="summary-list">
-          <div class="summary-row"><span>GNSS</span><strong id="gnssStatus">Idle</strong></div>
+        <div class="controls-run-strip" role="group" aria-label="Emulator control and GNSS status">
+          <button id="startStopButton" class="primary" type="button">Start</button>
+          <div class="summary-list controls-gnss-status">
+            <div class="summary-row"><span>GNSS</span><strong id="gnssStatus">Idle</strong></div>
+          </div>
         </div>
-      </div>
       </div>
 
       <details class="panel collapsible-panel">

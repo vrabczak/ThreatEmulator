@@ -1,6 +1,6 @@
 # Threat Emulator
 
-Threat Emulator is an offline-capable browser application for evaluating terrain-based threat warnings. It loads local threat scenery from CSV, loads local terrain elevation from GeoTIFF, watches the aircraft position through browser geolocation, and displays a large text warning when the aircraft is inside a threat's range with clear line of sight. A collapsible Leaflet map shows the aircraft, threats, and their effective-range circles.
+Threat Emulator is an offline-capable browser application for evaluating terrain-based threat warnings. It loads local threat scenery from CSV, loads local terrain elevation from GeoTIFF, watches the aircraft position through browser geolocation, and displays text and clock-face direction warnings when the aircraft is inside a threat's range with clear line of sight. A collapsible Leaflet map shows the aircraft, threats, and their effective-range circles.
 
 The app is built with TypeScript, Vite, Vitest, Leaflet, `geotiff`, `papaparse`, and `vite-plugin-pwa`.
 
@@ -19,7 +19,9 @@ The app is built with TypeScript, Vite, Vitest, Leaflet, `geotiff`, `papaparse`,
 - Converts browser WGS84 ellipsoid altitude to EGM96 orthometric MSL altitude, then calculates height above ground from local terrain elevation.
 - Evaluates threats every 3 seconds while the emulator is active.
 - Shows whether evaluation is running through the Start/Stop button, warning area, and evaluation countdown without a redundant header status badge.
+- Keeps setup actions in a responsive, collapsible Controls panel whose content wraps within the panel, with the Start/Stop button and GNSS status always visible, and automatically collapses the panel after a successful start.
 - Shows one equally prominent `DESCRIPTION CLOCK CODE DISTANCE` warning call for every active threat in first-appearance order.
+- Opens with a first-position Threat Display panel whose clock face shows a small red rocket at each occupied active-threat direction, without displaying or encoding distance.
 - Shows aircraft position, GPS altitude, height above ground, precision, track, validation status, and evaluation results.
 - Shows aircraft and threat positions with effective-range circles in a collapsible Leaflet map, with an in-map Leaflet button for center-on-aircraft mode that disengages when the map is moved manually.
 - Opens and scrolls to a coordinate-populated threat form by long pressing a map location, or right-clicking it with a mouse; repeating the gesture while a form is open updates only its position and scrolls back to it.
@@ -72,11 +74,12 @@ npm run preview
 4. Optionally select a local elevation GeoTIFF file, use the offered download link when no file is available locally, or restore a remembered file on compatible browsers.
 5. Grant browser geolocation permission when prompted.
 6. Wait for an aircraft position with GPS altitude.
-7. Start the emulator. Its running state is visible from the Stop button, warning area, and evaluation countdown; the header has no separate state badge.
+7. Start the emulator. The Controls panel collapses automatically, leaving the Stop button and GNSS status visible. Its running state is also visible in the warning area and evaluation countdown; the header has no separate state badge. Select the Controls header whenever you need the setup actions again.
 8. Read each active `DESCRIPTION CLOCK CODE DISTANCE` threat call in the warning area. Calls retain activation order while active; a threat that becomes inactive and later reactivates returns at the bottom. Threats first detected together use threat-list order.
-9. Expand the collapsed Aircraft Status, Threats, and Map panels as needed. On widescreen displays, Controls, Aircraft Status, and Threats form a separately scrollable left column while the Map panel fills the available screen height in the right column. Narrower displays use a single-column layout. The threat table is available before the emulator starts and shows each threat's ID/description, distance/range, LOS/state, and edit/delete actions.
-10. In the Map panel, use Leaflet's layers icon in the upper-right corner to choose OpenStreetMap, OpenTopoMap, configured Mapy.com outdoor/aerial tiles, or configured Google satellite imagery. Red markers identify threats and their effective ranges. The top-down aircraft marker uses blue in the light theme and green in the dark theme. Its nose follows the available GPS track and points north when track is unavailable. Press the target icon below the zoom buttons to keep the map centered as the aircraft position changes; its accent background indicates that following is active. Manually panning or zooming releases following. The panel header reports online/offline connectivity. Online tiles disappear while offline, but the same overlays and controls remain usable over a neutral grid.
-11. Use the placement hint displayed beside the map legend: long press a desired map location on a touch device, or right-click it with a mouse, to open the Threats panel with a new-threat form in coordinate mode and scroll to it. When an add or edit form is already open, the gesture replaces its latitude and longitude without clearing any other values, then scrolls back to the form.
+9. The first left-column panel is the default-open Threat Display. Read its red rockets against the twelve clock ticks for active-threat direction and existence; all rockets use the same radius, so the scope does not show distance. If several active threats occupy the same clock direction, that direction has one rocket. The display remains empty when there is no active directional threat.
+10. Collapse or expand Controls, and expand the collapsed Aircraft Status, Threats, and Map panels as needed. The Controls run strip keeps Start/Stop and GNSS status available in either state. On widescreen displays, Threat Display, Controls, Aircraft Status, and Threats form a separately scrollable left column while the Map panel fills the available screen height in the right column. Narrower displays use a single-column layout. The threat table is available before the emulator starts and shows each threat's ID/description, distance/range, LOS/state, and edit/delete actions.
+11. In the Map panel, use Leaflet's layers icon in the upper-right corner to choose OpenStreetMap, OpenTopoMap, configured Mapy.com outdoor/aerial tiles, or configured Google satellite imagery. Red markers identify threats and their effective ranges. The top-down aircraft marker uses blue in the light theme and green in the dark theme. Its nose follows the available GPS track and points north when track is unavailable. Press the target icon below the zoom buttons to keep the map centered as the aircraft position changes; its accent background indicates that following is active. Manually panning or zooming releases following. The panel header reports online/offline connectivity. Online tiles disappear while offline, but the same overlays and controls remain usable over a neutral grid.
+12. Use the placement hint displayed beside the map legend: long press a desired map location on a touch device, or right-click it with a mouse, to open the Threats panel with a new-threat form in coordinate mode and scroll to it. When an add or edit form is already open, the gesture replaces its latitude and longitude without clearing any other values, then scrolls back to the form.
 
 ### Google satellite configuration
 
@@ -147,6 +150,8 @@ For each valid threat, the emulator:
 3. Treats magic threats as always having clear line of sight. For other in-range threats, runs a flat-earth terrain line-of-sight check when an elevation model is loaded; otherwise assumes line of sight is clear.
 4. Marks the threat active when line of sight is clear.
 5. Builds one `DESCRIPTION CLOCK CODE DISTANCE` warning call for every active threat, using its ID when the description is blank and omitting the clock code when aircraft track is unavailable. Continuously active calls retain first-appearance order, while a reactivated threat is appended after them.
+
+The Threat Display uses those same active results and clock codes but intentionally omits description and distance. It shows one fixed-radius rocket for each occupied clock direction and no rocket when direction cannot be resolved from aircraft track.
 
 GNSS fixes are published to threat evaluation atomically after their EGM96 conversion finishes. While a newer fix is being converted, the previous fully converted aircraft state remains available, so the 3-second evaluation does not skip LOS merely because conversion is in progress.
 
