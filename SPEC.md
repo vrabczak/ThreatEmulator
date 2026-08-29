@@ -70,7 +70,7 @@ Final library selection should be confirmed during implementation, especially fo
 6. If selected, the app validates GeoTIFF metadata, coordinate system, elevation units, and coverage.
 7. User grants geolocation permission, which is required for relative threat placement and emulator operation.
 8. App starts receiving aircraft GNSS fixes from the iPad.
-9. User activates the emulator after at least one valid threat exists. A successful start automatically collapses the Controls panel while keeping Stop and current GNSS status visible.
+9. User activates the emulator after at least one valid threat exists. A successful start automatically collapses the Controls panel while keeping Stop, Stay awake, and current GNSS status visible.
 10. Every 3 seconds, the app evaluates the latest aircraft state against the current working threat list.
 11. If one or more threats are active, the app displays one large visual warning row per active threat in first-appearance order.
 12. The first left-column panel is an initially expanded Threat Display that places a red rocket at every occupied GPS-track-relative clock direction. Every rocket uses the same fixed radius, so the display communicates threat direction and existence without distance.
@@ -292,7 +292,7 @@ Required controls and displays:
 - Large warning text row for every active threat.
 - First, default-open collapsible Threat Display panel with a direction-only clock face and red active-threat rockets.
 - Threat validation/status summary.
-- An initially expanded, collapsible Controls panel for messages, threat and terrain import, and wake-lock control. Expanded content must shrink or wrap within the panel at every supported viewport width. A separate run strip remains visible in both panel states with Start/Stop and GNSS status. Successful emulator activation collapses the setup content automatically; the user can reopen it while running, and stopping does not override the current panel state.
+- An initially expanded, collapsible Controls panel for messages and threat and terrain import. Expanded content must shrink or wrap within the panel at every supported viewport width. A separate run strip remains visible in both panel states with Start/Stop, Stay awake, and GNSS status. Successful emulator activation collapses the setup content automatically; the user can reopen it while running, and stopping does not override the current panel state.
 - Separate collapsible aircraft status and threat table panels, collapsed by default. The threat table uses two-line ID/description, distance/range, LOS/state, and actions columns. Activation conditions use the theme accent (blue in light mode and green in dark mode); out-of-range, BLOS, inactive, unavailable, warning, and error states use red. Values not yet evaluated use neutral grey placeholders.
 - On viewport widths above 900 px, Threat Display, Controls, Aircraft Status, and Threats are stacked in an independently vertically scrollable left column. The Map panel occupies the right column and, while expanded, stretches into the explicit remaining-height layout row so its map stays visible and fits below the header and warning area without creating page-level vertical overflow. At 900 px and below, the panels return to a single-column flow with the Map after the other panels. Map actions remain compact Leaflet controls inside the map at every viewport width.
 - A separate collapsible Map panel, collapsed by default, containing:
