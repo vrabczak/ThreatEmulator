@@ -268,7 +268,7 @@ Multiple active threats:
 
 The first panel in the left column is a collapsible Threat Display and is open by default on each page load. Its black square scope follows the supplied cockpit-display reference with a white circular ring, twelve clock ticks, and a center dot.
 
-Each clock direction occupied by one or more active threats shows one small red rocket with a white outline. Clock positions use the same GPS-track-relative calculation as text warning calls. Rockets sit at a common fixed radius and do not encode or show distance, threat identity, or threat count. An active threat cannot be placed while aircraft track is unavailable; in that case the accessible display status reports that direction is unavailable rather than inventing a direction. The display exposes stopped, no-active-threat, unavailable-direction, and occupied-direction states to assistive technology without adding distance text to the scope.
+Each clock direction occupied by one or more active threats shows one small red rocket with a white outline. The rocket nose points inward toward the scope center, while the side fins sweep rearward toward the exhaust. Clock positions use the same GPS-track-relative calculation as text warning calls. Rockets sit at a common fixed radius and do not encode or show distance, threat identity, or threat count. An active threat cannot be placed while aircraft track is unavailable; in that case the accessible display status reports that direction is unavailable rather than inventing a direction. The display exposes stopped, no-active-threat, unavailable-direction, and occupied-direction states to assistive technology without adding distance text to the scope.
 
 ## User Interface
 

@@ -21,7 +21,7 @@ The app is built with TypeScript, Vite, Vitest, Leaflet, `geotiff`, `papaparse`,
 - Shows whether evaluation is running through the Start/Stop button, warning area, and evaluation countdown without a redundant header status badge.
 - Keeps setup actions in a responsive, collapsible Controls panel whose content wraps within the panel, with Start/Stop, Stay awake, and GNSS status always visible, and automatically collapses the panel after a successful start.
 - Shows one equally prominent `DESCRIPTION CLOCK CODE DISTANCE` warning call for every active threat in first-appearance order.
-- Opens with a first-position Threat Display panel whose clock face shows a small red rocket at each occupied active-threat direction, without displaying or encoding distance.
+- Opens with a first-position Threat Display panel whose clock face shows a small red rocket at each occupied active-threat direction, with its nose aimed toward the scope center and its fins swept back toward the exhaust, without displaying or encoding distance.
 - Shows aircraft position, GPS altitude, height above ground, precision, track, validation status, and evaluation results.
 - Shows aircraft and threat positions with effective-range circles in a collapsible Leaflet map, with an in-map Leaflet button for center-on-aircraft mode that disengages when the map is moved manually.
 - Opens and scrolls to a coordinate-populated threat form by long pressing a map location, or right-clicking it with a mouse; repeating the gesture while a form is open updates only its position and scrolls back to it.
