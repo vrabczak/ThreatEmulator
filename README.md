@@ -20,6 +20,7 @@ The app is built with TypeScript, Vite, Vitest, Leaflet, `geotiff`, `papaparse`,
 - Can remember a local GeoTIFF through a persistent file handle on compatible browsers.
 - Offers a download link for the elevation GeoTIFF when no terrain file is loaded or remembered.
 - Converts browser WGS84 ellipsoid altitude to EGM96 orthometric MSL altitude, then calculates height above ground from local terrain elevation.
+- Coalesces queued aircraft terrain samples to the newest GNSS fix so frequent position updates do not delay threat line-of-sight calculations.
 - Publishes every GNSS position, accuracy, and track update immediately even when GPS altitude is temporarily unavailable or cannot be converted.
 - Stops active evaluation when browser geolocation fails or no new GNSS fix arrives for 15 seconds, preventing warnings based on an indefinitely stale aircraft position.
 - Evaluates threats every 3 seconds while the emulator is active.
