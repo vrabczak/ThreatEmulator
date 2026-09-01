@@ -98,7 +98,11 @@ export class TerrainController {
         void this.loadManualTerrain(file);
       }
     });
-    terrainImportButton.addEventListener('click', () => void this.importTerrain());
+    terrainImportButton.addEventListener('click', () => {
+      // Stop evaluation before the native picker opens so terrain work cannot overlap file selection and loading.
+      this.options.onBeforeTerrainLoad();
+      void this.importTerrain();
+    });
   }
 
   private async loadManualTerrain(file: File): Promise<void> {
@@ -128,6 +132,8 @@ export class TerrainController {
       await this.pickAndRememberTerrain();
       return;
     }
+    // Clearing the fallback input lets browsers emit `change` when the same GeoTIFF is selected again.
+    this.terrainInput.value = '';
     this.terrainInput.click();
   }
 

@@ -17,6 +17,7 @@ The application runs entirely in the browser, uses user-selected local files and
 - A non-empty working threat list can be exported as a local semicolon-delimited CSV file.
 - Manual threats may be positioned by WGS84 decimal-degree coordinates, MGRS, or true bearing and distance from the latest aircraft position.
 - Elevation data may optionally be loaded from a local GeoTIFF file.
+- Starting elevation import while the emulator is active must stop the emulator before the file picker opens. The selected GeoTIFF must then load with no threat evaluation running, and the emulator must remain stopped until the user starts it again.
 - When loaded, GeoTIFF coordinates are WGS84 and elevation values are meters MSL.
 - Threat height is sensor height above local terrain.
 - Threat range uses horizontal ground distance.
@@ -66,7 +67,7 @@ Final library selection should be confirmed during implementation, especially fo
 2. User imports a local threat scenery CSV, creates one or more threats manually, or does both sequentially.
 3. App validates imported or manually entered threats and displays the editable working threat list.
 4. For manual placement, the user enters WGS84 decimal-degree coordinates, MGRS, or a true bearing and distance from the aircraft.
-5. User may optionally select a local elevation GeoTIFF file. When no elevation file is loaded or remembered, the app offers a link to download one.
+5. User may optionally select a local elevation GeoTIFF file. When no elevation file is loaded or remembered, the app offers a link to download one. If the emulator is active, beginning this import stops it before the file picker opens; the selected GeoTIFF then loads while evaluation remains stopped.
 6. If selected, the app validates GeoTIFF metadata, coordinate system, elevation units, and coverage.
 7. User grants geolocation permission, which is required for relative threat placement and emulator operation.
 8. App starts receiving aircraft GNSS fixes from the iPad.

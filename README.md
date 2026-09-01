@@ -14,6 +14,7 @@ The app is built with TypeScript, Vite, Vitest, Leaflet, `geotiff`, `papaparse`,
 - Exports the current non-empty threat list as a semicolon-delimited CSV file.
 - Places manual threats by WGS84 decimal-degree coordinates, MGRS, or true bearing and distance from the latest aircraft position.
 - Optionally loads a user-selected local WGS84 elevation GeoTIFF for terrain-aware line-of-sight checks.
+- Stops an active emulator as soon as elevation import begins, then loads the selected GeoTIFF without overlapping threat evaluation.
 - Can remember a local GeoTIFF through a persistent file handle on compatible browsers.
 - Offers a download link for the elevation GeoTIFF when no terrain file is loaded or remembered.
 - Converts browser WGS84 ellipsoid altitude to EGM96 orthometric MSL altitude, then calculates height above ground from local terrain elevation.
@@ -71,7 +72,7 @@ npm run preview
 1. Open the app in a browser.
 2. Select the sun–moon toggle in the header to change appearance. Its high-contrast thumb moves toward the active theme. Light is the first-visit default, and the browser remembers an explicit selection for future launches.
 3. Select a semicolon-delimited threat CSV file, or expand Threats and choose `Add threat`.
-4. Optionally select a local elevation GeoTIFF file, use the offered download link when no file is available locally, or restore a remembered file on compatible browsers.
+4. Optionally select a local elevation GeoTIFF file, use the offered download link when no file is available locally, or restore a remembered file on compatible browsers. Starting an elevation import while the emulator is active stops the emulator before the file picker opens; after selection, the GeoTIFF loads normally and the emulator remains stopped until you start it again.
 5. Grant browser geolocation permission when prompted.
 6. Wait for an aircraft position with GPS altitude.
 7. Start the emulator. The Controls panel collapses automatically, leaving the Stop button, Stay awake button, and GNSS status visible. Its running state is also visible in the warning area and evaluation countdown; the header has no separate state badge. Select the Controls header whenever you need the setup actions again.
