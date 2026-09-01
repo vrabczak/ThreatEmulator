@@ -18,6 +18,8 @@ The app is built with TypeScript, Vite, Vitest, Leaflet, `geotiff`, `papaparse`,
 - Can remember a local GeoTIFF through a persistent file handle on compatible browsers.
 - Offers a download link for the elevation GeoTIFF when no terrain file is loaded or remembered.
 - Converts browser WGS84 ellipsoid altitude to EGM96 orthometric MSL altitude, then calculates height above ground from local terrain elevation.
+- Publishes every GNSS position, accuracy, and track update immediately even when GPS altitude is temporarily unavailable or cannot be converted.
+- Stops active evaluation when browser geolocation fails or no new GNSS fix arrives for 15 seconds, preventing warnings based on an indefinitely stale aircraft position.
 - Evaluates threats every 3 seconds while the emulator is active.
 - Shows whether evaluation is running through the Start/Stop button, warning area, and evaluation countdown without a redundant header status badge.
 - Keeps setup actions in a responsive, collapsible Controls panel whose content wraps within the panel, with Start/Stop, Stay awake, and GNSS status always visible, and automatically collapses the panel after a successful start.
@@ -75,7 +77,7 @@ npm run preview
 4. Optionally select a local elevation GeoTIFF file, use the offered download link when no file is available locally, or restore a remembered file on compatible browsers. Starting an elevation import while the emulator is active stops the emulator before the file picker opens; after selection, the GeoTIFF loads normally and the emulator remains stopped until you start it again.
 5. Grant browser geolocation permission when prompted.
 6. Wait for an aircraft position with GPS altitude.
-7. Start the emulator. The Controls panel collapses automatically, leaving the Stop button, Stay awake button, and GNSS status visible. Its running state is also visible in the warning area and evaluation countdown; the header has no separate state badge. Select the Controls header whenever you need the setup actions again.
+7. Start the emulator. The Controls panel collapses automatically, leaving the Stop button, Stay awake button, and GNSS status visible. Its running state is also visible in the warning area and evaluation countdown; the header has no separate state badge. If geolocation fails or supplies no new fix for 15 seconds, the emulator stops and clears its warnings rather than continuing with the last position. Select the Controls header whenever you need the setup actions again.
 8. Read each active `DESCRIPTION CLOCK CODE DISTANCE` threat call in the warning area. Calls retain activation order while active; a threat that becomes inactive and later reactivates returns at the bottom. Threats first detected together use threat-list order.
 9. The first left-column panel is the default-open Threat Display. Read its red rockets against the twelve clock ticks for active-threat direction and existence; all rockets use the same radius, so the scope does not show distance. If several active threats occupy the same clock direction, that direction has one rocket. The display remains empty when there is no active directional threat.
 10. Collapse or expand Controls, and expand the collapsed Aircraft Status, Threats, and Map panels as needed. The Controls run strip keeps Start/Stop, Stay awake, and GNSS status available in either state. On widescreen displays, Threat Display, Controls, Aircraft Status, and Threats form a separately scrollable left column while the Map panel fills the available screen height in the right column. Narrower displays use a single-column layout. The threat table is available before the emulator starts and shows each threat's ID/description, distance/range, LOS/state, and edit/delete actions.
@@ -154,7 +156,7 @@ For each valid threat, the emulator:
 
 The Threat Display uses those same active results and clock codes but intentionally omits description and distance. It shows one fixed-radius rocket for each occupied clock direction and no rocket when direction cannot be resolved from aircraft track.
 
-GNSS fixes are published to threat evaluation atomically after their EGM96 conversion finishes. While a newer fix is being converted, the previous fully converted aircraft state remains available, so the 3-second evaluation does not skip LOS merely because conversion is in progress.
+Every GNSS fix immediately replaces the displayed and evaluable aircraft position, accuracy, track, and timestamp. EGM96 altitude conversion is then applied only if that fix is still the newest one. Until conversion finishes, altitude-dependent threats may report aircraft state unavailable, while magic threats can still use the current horizontal position. A missing altitude or failed conversion never prevents later position fields from updating. Browser geolocation errors and 15 seconds without a new fix stop the emulator and clear prior warning results.
 
 V1 does not model earth curvature, atmospheric refraction, or buildings. The map is a situational display and does not alter threat evaluation.
 

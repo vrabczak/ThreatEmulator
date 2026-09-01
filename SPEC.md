@@ -10,6 +10,8 @@ The application runs entirely in the browser, uses user-selected local files and
 
 - Target device is iPad mini.
 - Aircraft position comes from the iPad's built-in GNSS sensor through browser geolocation.
+- Every received GNSS fix must immediately replace the displayed and evaluable position, accuracy, track, and timestamp without waiting for altitude conversion.
+- Browser geolocation failure or 15 seconds without a new fix must stop active evaluation and clear prior warnings so stale aircraft data is never treated as live.
 - Browser GPS ellipsoid altitude is converted to EGM96 orthometric MSL altitude. Aircraft AGL is calculated when an elevation model is loaded and is unavailable otherwise.
 - Aircraft track is used for clock-code calculation. Heading is not used.
 - Threats may be imported from a local semicolon-delimited CSV file or created manually without a CSV.
@@ -72,7 +74,7 @@ Final library selection should be confirmed during implementation, especially fo
 7. User grants geolocation permission, which is required for relative threat placement and emulator operation.
 8. App starts receiving aircraft GNSS fixes from the iPad.
 9. User activates the emulator after at least one valid threat exists. A successful start automatically collapses the Controls panel while keeping Stop, Stay awake, and current GNSS status visible.
-10. Every 3 seconds, the app evaluates the latest aircraft state against the current working threat list.
+10. Every 3 seconds, the app evaluates the latest aircraft state against the current working threat list. If geolocation fails or supplies no new fix for 15 seconds, the app stops the emulator and clears existing warnings until the user receives a current fix and starts it again.
 11. If one or more threats are active, the app displays one large visual warning row per active threat in first-appearance order.
 12. The first left-column panel is an initially expanded Threat Display that places a red rocket at every occupied GPS-track-relative clock direction. Every rocket uses the same fixed radius, so the display communicates threat direction and existence without distance.
 13. User can stop the emulator, import a replacement CSV, add/edit/delete individual threats, or export the current non-empty list.
@@ -179,7 +181,7 @@ Derived aircraft state:
 
 Clock-code calculation uses GPS track only. Heading, compass bearing, and aircraft nose direction are not used.
 
-The emulator uses the latest fully converted aircraft state every 3 seconds. A new GNSS fix replaces the evaluable state only after its EGM96 conversion finishes; until then, the previous converted state remains available for LOS and threat evaluation. GNSS update frequency is controlled by the browser and device; the evaluation interval does not guarantee a new GNSS fix every cycle.
+The emulator publishes every GNSS fix immediately so latitude, longitude, accuracy, track, and timestamp cannot be held behind asynchronous EGM96 conversion. Orthometric altitude and AGL are applied only when their asynchronous results still match the latest fix timestamp. While conversion is pending or altitude is unavailable, altitude-dependent threats report aircraft state unavailable; magic threats can still use the current horizontal position. GNSS update frequency is controlled by the browser and device, but a browser geolocation error or 15 seconds without a new fix stops active evaluation and clears prior warnings.
 
 ## Threat Evaluation
 
@@ -364,6 +366,7 @@ The app should show actionable errors for:
 - GeoTIFF file too large or unsupported by the browser/library.
 - Aircraft GNSS permission denied.
 - Aircraft position unavailable.
+- Aircraft position stale because no new GNSS fix arrived for 15 seconds.
 - Aircraft GPS altitude unavailable.
 - Aircraft GPS track unavailable.
 - Aircraft or threat outside GeoTIFF coverage.
@@ -399,6 +402,8 @@ Automated tests should cover:
 - GeoTIFF coordinate-to-pixel conversion.
 - Terrain sampling.
 - Aircraft AGL calculation.
+- GNSS position publication when altitude is missing or conversion is pending.
+- GNSS freshness timeout and recovery after a later fix.
 - Line-of-sight blocked and clear cases.
 - No-elevation-model behavior where LOS is assumed clear and range is the only activation factor.
 - Threat activation logic.

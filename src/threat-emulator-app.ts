@@ -12,7 +12,11 @@ import type {
   ThreatEvaluationSummary
 } from './domain/types';
 import { reconcileActiveThreatOrder } from './domain/warning';
-import { GeolocationTracker, type GeolocationStatus } from './services/geolocation';
+import {
+  GeolocationTracker,
+  isGnssFixFresh,
+  type GeolocationStatus
+} from './services/geolocation';
 import { AircraftAltitudeController } from './services/aircraft-altitude';
 import { WorkerTerrainService } from './services/terrain-service';
 import { WakeLockController } from './services/wake-lock';
@@ -145,7 +149,16 @@ export class ThreatEmulatorApp {
   private handleGeolocationStatus(status: GeolocationStatus, message: string): void {
     this.geolocationStatus = status;
     this.geolocationMessage = message;
-    if (status === 'denied' || status === 'unavailable' || status === 'error') {
+    if (
+      status === 'stale' ||
+      status === 'denied' ||
+      status === 'unavailable' ||
+      status === 'error'
+    ) {
+      if (this.emulatorActive) {
+        this.stopEmulatorForReadinessError(message);
+        return;
+      }
       this.setMessage(message, 'error');
     }
     this.render();
@@ -285,6 +298,10 @@ export class ThreatEmulatorApp {
     }
     const readinessError = this.getReadinessError();
     if (readinessError) {
+      if (this.emulatorActive) {
+        this.stopEmulatorForReadinessError(readinessError);
+        return;
+      }
       this.setMessage(readinessError, 'error');
       this.render();
       return;
@@ -344,6 +361,17 @@ export class ThreatEmulatorApp {
     if (!aircraftState) {
       return 'Grant GNSS permission and wait for an aircraft position before activating the emulator.';
     }
+    if (!isGnssFixFresh(aircraftState.timestampMs)) {
+      return 'Aircraft GNSS position is stale. Wait for a new position fix before starting the emulator.';
+    }
+    if (
+      this.geolocationStatus === 'stale' ||
+      this.geolocationStatus === 'denied' ||
+      this.geolocationStatus === 'unavailable' ||
+      this.geolocationStatus === 'error'
+    ) {
+      return this.geolocationMessage;
+    }
     if (
       aircraftState.gpsAltitudeM === null &&
       this.threats.every((threat) => threat.heightAglM !== null)
@@ -351,6 +379,17 @@ export class ThreatEmulatorApp {
       return 'Aircraft GPS altitude is unavailable.';
     }
     return null;
+  }
+
+  private stopEmulatorForReadinessError(message: string): void {
+    this.lastEvaluation = null;
+    this.activeThreatOrder = [];
+    this.stopEmulator(message);
+    this.setMessage(
+      `${message} Emulator stopped to prevent evaluation with unavailable aircraft data.`,
+      'error'
+    );
+    this.render();
   }
 
   private render(): void {

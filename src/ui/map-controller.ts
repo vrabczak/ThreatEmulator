@@ -48,7 +48,7 @@ export class MapController {
 
   /**
    * Updates the aircraft and threat overlays from current application state.
-   * @param aircraftState - Latest fully converted aircraft state, if available.
+   * @param aircraftState - Latest GNSS aircraft state, if available.
    * @param threats - Current editable threat list.
    * @returns Nothing.
    */

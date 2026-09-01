@@ -1,6 +1,6 @@
 /**
- * Wraps the browser Geolocation API and emits normalized aircraft state and watch status.
- * Track state is retained across fixes so brief heading gaps can reuse a recent reliable value.
+ * Wraps the browser Geolocation API and emits normalized aircraft state, freshness, and watch status.
+ * Track state is retained across fixes, and a watchdog reports when position updates silently stop.
  */
 
 import {
@@ -11,14 +11,41 @@ import {
 } from '../domain/track';
 import type { AircraftState } from '../domain/types';
 
-export type GeolocationStatus = 'idle' | 'watching' | 'denied' | 'unavailable' | 'error';
+export const GNSS_FIX_STALE_TIMEOUT_MS = 15_000;
+
+export type GeolocationStatus =
+  | 'idle'
+  | 'watching'
+  | 'stale'
+  | 'denied'
+  | 'unavailable'
+  | 'error';
+
+/**
+ * Tests whether a GNSS timestamp is recent enough for live threat evaluation.
+ * @param timestampMs - Browser geolocation timestamp in epoch milliseconds.
+ * @param nowMs - Current epoch time used for the comparison.
+ * @param maxAgeMs - Maximum accepted fix age.
+ * @returns `true` when the timestamp is finite and no older than the configured limit.
+ */
+export function isGnssFixFresh(
+  timestampMs: number,
+  nowMs = Date.now(),
+  maxAgeMs = GNSS_FIX_STALE_TIMEOUT_MS
+): boolean {
+  if (!Number.isFinite(timestampMs) || !Number.isFinite(nowMs) || maxAgeMs < 0) {
+    return false;
+  }
+  return Math.max(0, nowMs - timestampMs) <= maxAgeMs;
+}
 
 /**
  * Owns the browser GNSS watch and translates position callbacks into application aircraft state.
- * Call `start` and `stop` idempotently; position and reliable-track history live for the instance lifetime.
+ * Call `start` and `stop` idempotently; a page-lifetime watchdog detects silent update loss.
  */
 export class GeolocationTracker {
   private watchId: number | null = null;
+  private staleTimer: number | null = null;
   private previousFix: PositionFix | null = null;
   private reliableTrack: ReliableTrack | null = null;
 
@@ -32,7 +59,10 @@ export class GeolocationTracker {
     private readonly onStatus: (status: GeolocationStatus, message: string) => void
   ) {}
 
-  /** Starts the GNSS watch when browser geolocation is available. */
+  /**
+   * Starts the GNSS watch when browser geolocation is available.
+   * @returns Nothing.
+   */
   start(): void {
     if (!('geolocation' in navigator)) {
       this.onStatus('unavailable', 'Browser geolocation is not available.');
@@ -55,12 +85,16 @@ export class GeolocationTracker {
     );
   }
 
-  /** Stops the active GNSS watch and reports the idle state. */
+  /**
+   * Stops the active GNSS watch, freshness watchdog, and reports the idle state.
+   * @returns Nothing.
+   */
   stop(): void {
     if (this.watchId !== null) {
       navigator.geolocation.clearWatch(this.watchId);
       this.watchId = null;
     }
+    this.clearStaleTimer();
     this.onStatus('idle', 'GNSS watch stopped.');
   }
 
@@ -79,6 +113,7 @@ export class GeolocationTracker {
     );
     this.reliableTrack = resolvedTrack.reliableTrack;
     this.previousFix = currentFix;
+    this.armStaleTimer();
 
     this.onState({
       latitude: position.coords.latitude,
@@ -97,6 +132,7 @@ export class GeolocationTracker {
   }
 
   private handleError(error: GeolocationPositionError): void {
+    this.clearStaleTimer();
     if (error.code === error.PERMISSION_DENIED) {
       this.onStatus('denied', 'GNSS permission denied.');
       return;
@@ -108,5 +144,23 @@ export class GeolocationTracker {
     }
 
     this.onStatus('error', error.message || 'Unable to read GNSS position.');
+  }
+
+  private armStaleTimer(): void {
+    this.clearStaleTimer();
+    this.staleTimer = window.setTimeout(() => {
+      this.staleTimer = null;
+      this.onStatus(
+        'stale',
+        `GNSS position is stale: no update received for ${GNSS_FIX_STALE_TIMEOUT_MS / 1000} seconds.`
+      );
+    }, GNSS_FIX_STALE_TIMEOUT_MS);
+  }
+
+  private clearStaleTimer(): void {
+    if (this.staleTimer !== null) {
+      window.clearTimeout(this.staleTimer);
+      this.staleTimer = null;
+    }
   }
 }
