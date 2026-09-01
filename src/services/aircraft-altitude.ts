@@ -23,6 +23,8 @@ export class AircraftAltitudeController {
   private latestFixTimestampMs: number | null = null;
   private lastTerrainElevationM: number | null = null;
   private lastTerrainReason: string | null = null;
+  private aglRefreshInFlight = false;
+  private queuedAglState: AircraftState | null = null;
 
   /**
    * Creates the altitude controller with the terrain service shared by threat evaluation.
@@ -75,7 +77,7 @@ export class AircraftAltitudeController {
     }
     this.options.onStateChanged();
     if (metadata && this.aircraft) {
-      void this.refreshAgl(this.aircraft);
+      this.scheduleAglRefresh(this.aircraft);
     }
   }
 
@@ -119,7 +121,30 @@ export class AircraftAltitudeController {
         ? null
         : 'Using last retrieved terrain elevation while the current lookup completes.';
     this.options.onStateChanged();
-    await this.refreshAgl(convertedState);
+    this.scheduleAglRefresh(convertedState);
+  }
+
+  private scheduleAglRefresh(state: AircraftState): void {
+    if (!this.terrainMetadata || state.gpsAltitudeM === null) {
+      return;
+    }
+
+    if (this.aglRefreshInFlight) {
+      // GNSS can update faster than GeoTIFF reads. Keep only the newest pending position so obsolete
+      // aircraft samples cannot compete with the periodic LOS calculation in the shared worker.
+      this.queuedAglState = state;
+      return;
+    }
+
+    this.aglRefreshInFlight = true;
+    void this.refreshAgl(state).finally(() => {
+      this.aglRefreshInFlight = false;
+      const queuedState = this.queuedAglState;
+      this.queuedAglState = null;
+      if (queuedState && queuedState.timestampMs === this.latestFixTimestampMs) {
+        this.scheduleAglRefresh(queuedState);
+      }
+    });
   }
 
   private async refreshAgl(state: AircraftState): Promise<void> {

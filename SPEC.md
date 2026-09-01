@@ -13,6 +13,7 @@ The application runs entirely in the browser, uses user-selected local files and
 - Every received GNSS fix must immediately replace the displayed and evaluable position, accuracy, track, and timestamp without waiting for altitude conversion.
 - Browser geolocation failure or 15 seconds without a new fix must stop active evaluation and clear prior warnings so stale aircraft data is never treated as live.
 - Browser GPS ellipsoid altitude is converted to EGM96 orthometric MSL altitude. Aircraft AGL is calculated when an elevation model is loaded and is unavailable otherwise.
+- Aircraft terrain sampling must coalesce obsolete queued GNSS fixes so it cannot starve the shared terrain worker or delay periodic threat LOS evaluation.
 - Aircraft track is used for clock-code calculation. Heading is not used.
 - Threats may be imported from a local semicolon-delimited CSV file or created manually without a CSV.
 - The user can add, edit, and delete threats in the Threats panel.
