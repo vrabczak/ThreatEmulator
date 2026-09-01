@@ -35,6 +35,7 @@ The application runs entirely in the browser, uses user-selected local files and
 - Mapy.com outdoor is the initial base layer when `VITE_MAPY_API_KEY` is configured; otherwise OpenStreetMap is the initial base layer.
 - The user can switch between a light white/black/grey/blue/red theme and a dark black/grey/white/green/red theme. Light is the first-visit default, and an explicit selection persists locally across launches.
 - Header actions remain in the same row as the brand and aligned to the right edge on narrow displays.
+- Browser-level zooming of the application is disabled for keyboard shortcuts, modified mouse-wheel input, and touch pinch gestures. Leaflet map zoom through its controls, wheel, and touch gestures remains enabled.
 - The app should be installable as a PWA for offline launch.
 - CSV files are expected to be no larger than 1 MB.
 - GeoTIFF files are expected to be large, approximately 1-3 GB.
