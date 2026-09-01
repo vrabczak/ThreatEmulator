@@ -1,5 +1,5 @@
 /**
- * Coordinates asynchronous aircraft altitude conversion and terrain-based AGL sampling.
+ * Publishes current GNSS aircraft data and coordinates asynchronous altitude and terrain processing.
  * EGM96 conversion and terrain requests may finish out of order, so the latest GNSS timestamp always wins.
  */
 
@@ -13,8 +13,8 @@ export interface AircraftAltitudeControllerOptions {
 }
 
 /**
- * Owns the latest fully converted aircraft state and its terrain-elevation fallback.
- * Raw fixes become evaluable only after EGM96 conversion, and terrain changes invalidate cached AGL state.
+ * Owns the latest aircraft state and its terrain-elevation fallback.
+ * Raw position data is published immediately, while converted altitude is applied only to the matching latest fix.
  */
 export class AircraftAltitudeController {
   private readonly geoidModel = new Egm96GeoidModel();
@@ -31,8 +31,8 @@ export class AircraftAltitudeController {
   public constructor(private readonly options: AircraftAltitudeControllerOptions) {}
 
   /**
-   * Gets the latest aircraft state that is safe to use for rendering and evaluation.
-   * @returns The latest fully converted state, or the first raw state while its conversion is pending.
+   * Gets the latest aircraft state available for rendering and evaluation.
+   * @returns The latest raw or fully converted GNSS state.
    */
   public get aircraftState(): AircraftState | null {
     return this.aircraft;
@@ -53,8 +53,10 @@ export class AircraftAltitudeController {
    */
   public acceptFix(state: AircraftState): void {
     this.latestFixTimestampMs = state.timestampMs;
-    // Keep the last fully converted state evaluable while this newer fix is converted to MSL.
-    this.aircraft ??= state;
+    // Position, accuracy, and track must never wait for optional altitude conversion.
+    this.aircraft = state;
+    this.lastTerrainReason =
+      state.gpsEllipsoidAltitudeM === null ? 'Aircraft GPS altitude is unavailable.' : null;
     this.options.onStateChanged();
     void this.convertAltitudeToMsl(state);
   }
@@ -90,7 +92,10 @@ export class AircraftAltitudeController {
         state.longitude
       );
     } catch (error) {
-      if (this.latestFixTimestampMs === state.timestampMs && this.aircraft?.gpsAltitudeM === null) {
+      if (
+        this.latestFixTimestampMs === state.timestampMs &&
+        this.aircraft?.timestampMs === state.timestampMs
+      ) {
         this.lastTerrainReason =
           error instanceof Error ? error.message : 'Unable to convert GPS altitude to MSL.';
         this.options.onStateChanged();
