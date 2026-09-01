@@ -79,6 +79,50 @@ describe('WorkerTerrainService', () => {
     expect(fake.posted[1]).toMatchObject({ type: 'cancel', id: fake.posted[0].id });
   });
 
+  it('cancels LOS evaluation without interrupting an aircraft elevation sample', async () => {
+    const fake = new FakeWorker();
+    const service = new WorkerTerrainService(() => fake as unknown as Worker);
+    const samplePromise = service.sampleElevation(50, 14);
+    const evaluationPromise = service.evaluateLineOfSightBatch(
+      {
+        latitude: 50,
+        longitude: 14,
+        gpsEllipsoidAltitudeM: 500,
+        gpsAltitudeM: 500,
+        gpsAltitudeAccuracyM: null,
+        gpsAccuracyM: null,
+        aglM: null,
+        trackDegrees: null,
+        trackSource: 'unavailable',
+        trackAgeMs: null,
+        timestampMs: 1
+      },
+      [{
+        id: 'T001',
+        name: 'Alpha',
+        latitude: 50,
+        longitude: 14.1,
+        heightAglM: 10,
+        rangeKm: 20
+      }]
+    );
+    const sampleRequest = fake.posted[0];
+    const evaluationRequest = fake.posted[1];
+
+    service.cancelEvaluation();
+
+    await expect(evaluationPromise).rejects.toThrow('evaluation was canceled');
+    expect(fake.posted[2]).toMatchObject({ type: 'cancel', id: evaluationRequest.id });
+    expect(fake.posted).not.toContainEqual(expect.objectContaining({ type: 'cancel', id: sampleRequest.id }));
+
+    fake.emit({
+      id: sampleRequest.id,
+      type: 'sampled',
+      sample: { status: 'ok', elevationM: 320 }
+    });
+    await expect(samplePromise).resolves.toEqual({ status: 'ok', elevationM: 320 });
+  });
+
   it('evaluates LOS batches through the worker protocol', async () => {
     const fake = new FakeWorker();
     const service = new WorkerTerrainService(() => fake as unknown as Worker);

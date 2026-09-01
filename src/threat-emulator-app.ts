@@ -49,6 +49,7 @@ export class ThreatEmulatorApp {
   private countdownTimer: number | null = null;
   private nextEvaluationAtMs: number | null = null;
   private evaluationInFlight = false;
+  private emulatorRunRevision = 0;
   private lastEvaluation: ThreatEvaluationSummary | null = null;
   private activeThreatOrder: string[] = [];
   private started = false;
@@ -207,6 +208,7 @@ export class ThreatEmulatorApp {
     this.setMessage(message, 'normal');
     this.render();
     if (this.emulatorActive) {
+      this.terrainService.cancelEvaluation();
       void this.evaluateNow();
     }
   }
@@ -247,6 +249,7 @@ export class ThreatEmulatorApp {
       this.setMessage(`${loadMessage} Emulator stopped because no threats remain.`, loadTone);
       this.render();
     } else if (this.emulatorActive) {
+      this.terrainService.cancelEvaluation();
       void this.evaluateNow();
     }
   }
@@ -263,6 +266,7 @@ export class ThreatEmulatorApp {
     }
 
     this.emulatorActive = true;
+    this.emulatorRunRevision += 1;
     this.activeThreatOrder = [];
     this.setMessage('Emulator active. Threats evaluate every 3 seconds.', 'normal');
     getElement<HTMLDetailsElement>('controlsPanel').open = false;
@@ -287,6 +291,7 @@ export class ThreatEmulatorApp {
     }
     this.nextEvaluationAtMs = null;
     this.emulatorActive = false;
+    this.emulatorRunRevision += 1;
     this.terrainService.cancelPending();
     this.setMessage(message, 'normal');
     this.render();
@@ -309,6 +314,7 @@ export class ThreatEmulatorApp {
 
     this.evaluationInFlight = true;
     const evaluatedRevision = this.threatRevision;
+    const evaluatedRunRevision = this.emulatorRunRevision;
     this.render();
     let evaluationCompleted = false;
     try {
@@ -318,7 +324,11 @@ export class ThreatEmulatorApp {
         this.terrainService
       );
       // Ignore results from a run that was stopped or whose threat inputs changed while evaluation was pending.
-      if (!this.emulatorActive || evaluatedRevision !== this.threatRevision) {
+      if (
+        !this.emulatorActive ||
+        evaluatedRunRevision !== this.emulatorRunRevision ||
+        evaluatedRevision !== this.threatRevision
+      ) {
         return;
       }
       this.lastEvaluation = evaluation;
@@ -337,17 +347,29 @@ export class ThreatEmulatorApp {
         activeCount > 0 || !this.terrainController.metadata ? 'warning' : 'normal'
       );
     } catch (error) {
-      // Cancellation is expected when Stop is pressed or terrain import begins.
-      if (this.emulatorActive && evaluatedRevision === this.threatRevision) {
+      // Cancellation is expected after Stop, terrain import, or a live threat-list change.
+      if (
+        this.emulatorActive &&
+        evaluatedRunRevision === this.emulatorRunRevision &&
+        evaluatedRevision === this.threatRevision
+      ) {
         this.setMessage(error instanceof Error ? error.message : 'Threat evaluation failed.', 'error');
       }
     } finally {
       this.evaluationInFlight = false;
       this.render();
-      if (evaluationCompleted && this.emulatorActive) {
+      if (
+        evaluationCompleted &&
+        this.emulatorActive &&
+        evaluatedRunRevision === this.emulatorRunRevision
+      ) {
         highlightNewEvaluation();
       }
-      if (evaluatedRevision !== this.threatRevision && this.emulatorActive && this.threats.length > 0) {
+      if (
+        this.emulatorActive &&
+        this.threats.length > 0 &&
+        (evaluatedRunRevision !== this.emulatorRunRevision || evaluatedRevision !== this.threatRevision)
+      ) {
         void this.evaluateNow();
       }
     }

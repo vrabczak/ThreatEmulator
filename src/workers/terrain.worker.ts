@@ -75,7 +75,7 @@ async function handleRequest(request: TerrainWorkerRequest): Promise<void> {
 
     const results = [];
     for (const threat of request.threats) {
-      if (cancelled.has(request.id)) {
+      if (cancelled.delete(request.id)) {
         return;
       }
 
