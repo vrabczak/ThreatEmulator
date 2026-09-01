@@ -10,6 +10,7 @@ The app is built with TypeScript, Vite, Vitest, Leaflet, `geotiff`, `papaparse`,
 - Supports offline launch as a PWA after installation.
 - Switches between a light white/black/grey/blue/red theme and a dark black/grey/white/green/red theme, remembering the selection on the device.
 - Keeps header actions in the same row as the brand and aligned to the right edge on narrow screens.
+- Prevents browser-level zooming of the application while retaining Leaflet map zoom controls, mouse-wheel zoom, and touch pinch zoom.
 - Loads user-selected local threat CSV files and supports adding, editing, or deleting threats in the Threats panel.
 - Exports the current non-empty threat list as a semicolon-delimited CSV file.
 - Places manual threats by WGS84 decimal-degree coordinates, MGRS, or true bearing and distance from the latest aircraft position.
