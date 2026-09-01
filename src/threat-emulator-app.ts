@@ -300,8 +300,8 @@ export class ThreatEmulatorApp {
         this.aircraftAltitudeController.aircraftState,
         this.terrainService
       );
-      // Ignore stale async results after an edit, then schedule a fresh evaluation in `finally`.
-      if (evaluatedRevision !== this.threatRevision) {
+      // Ignore results from a run that was stopped or whose threat inputs changed while evaluation was pending.
+      if (!this.emulatorActive || evaluatedRevision !== this.threatRevision) {
         return;
       }
       this.lastEvaluation = evaluation;
@@ -320,13 +320,14 @@ export class ThreatEmulatorApp {
         activeCount > 0 || !this.terrainController.metadata ? 'warning' : 'normal'
       );
     } catch (error) {
-      if (evaluatedRevision === this.threatRevision) {
+      // Cancellation is expected when Stop is pressed or terrain import begins.
+      if (this.emulatorActive && evaluatedRevision === this.threatRevision) {
         this.setMessage(error instanceof Error ? error.message : 'Threat evaluation failed.', 'error');
       }
     } finally {
       this.evaluationInFlight = false;
       this.render();
-      if (evaluationCompleted) {
+      if (evaluationCompleted && this.emulatorActive) {
         highlightNewEvaluation();
       }
       if (evaluatedRevision !== this.threatRevision && this.emulatorActive && this.threats.length > 0) {
