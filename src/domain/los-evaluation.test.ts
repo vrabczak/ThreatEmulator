@@ -313,6 +313,7 @@ function createMockTerrainService(
       onBatchThreats?.(threats);
       return threats.map((threat) => ({ threatId: threat.id, result: lineOfSight }));
     },
+    cancelEvaluation(): void {},
     cancelPending(): void {},
     dispose(): void {}
   };

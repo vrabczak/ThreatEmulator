@@ -185,6 +185,9 @@ export interface TerrainService {
     options?: LineOfSightOptions
   ): Promise<LineOfSightBatchResult[]>;
 
+  /** Cancels unresolved line-of-sight requests without interrupting terrain loading or aircraft sampling. */
+  cancelEvaluation(): void;
+
   /** Cancels all unresolved terrain requests. */
   cancelPending(): void;
 

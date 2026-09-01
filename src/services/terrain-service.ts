@@ -15,7 +15,10 @@ import type {
 } from '../domain/types';
 import type { TerrainWorkerRequest, TerrainWorkerResponse } from '../workers/terrain-worker-protocol';
 
+type TerrainWorkerOperation = Exclude<TerrainWorkerRequest, { type: 'cancel' }>;
+
 type PendingRequest = {
+  type: TerrainWorkerOperation['type'];
   resolve: (value: unknown) => void;
   reject: (reason?: unknown) => void;
 };
@@ -24,7 +27,7 @@ export type TerrainWorkerFactory = () => Worker;
 
 /**
  * Coordinates typed terrain requests with the GeoTIFF worker and caches loaded metadata.
- * The worker lives from construction until `dispose`; cancellation rejects every unresolved promise.
+ * The worker lives from construction until `dispose`; cancellation can target LOS work or every pending request.
  */
 export class WorkerTerrainService implements TerrainService {
   private readonly worker: Worker;
@@ -128,13 +131,17 @@ export class WorkerTerrainService implements TerrainService {
     });
   }
 
+  /** Cancels only unresolved line-of-sight requests, preserving terrain loads and aircraft elevation samples. */
+  cancelEvaluation(): void {
+    this.cancelRequests(
+      (pending) => pending.type === 'los' || pending.type === 'los-batch',
+      'Threat evaluation was canceled.'
+    );
+  }
+
   /** Cancels and rejects every unresolved worker request. */
   cancelPending(): void {
-    for (const [id, pending] of this.pending.entries()) {
-      this.worker.postMessage({ id, type: 'cancel' } satisfies TerrainWorkerRequest);
-      pending.reject(new Error('Terrain request was canceled.'));
-    }
-    this.pending.clear();
+    this.cancelRequests(() => true, 'Terrain request was canceled.');
   }
 
   /** Terminates the worker after canceling unresolved requests. */
@@ -143,14 +150,26 @@ export class WorkerTerrainService implements TerrainService {
     this.worker.terminate();
   }
 
-  private request<T>(message: TerrainWorkerRequest): Promise<T> {
+  private request<T>(message: TerrainWorkerOperation): Promise<T> {
     return new Promise<T>((resolve, reject) => {
       this.pending.set(message.id, {
+        type: message.type,
         resolve: (value) => resolve(value as T),
         reject
       });
       this.worker.postMessage(message);
     });
+  }
+
+  private cancelRequests(predicate: (pending: PendingRequest) => boolean, message: string): void {
+    for (const [id, pending] of this.pending.entries()) {
+      if (!predicate(pending)) {
+        continue;
+      }
+      this.worker.postMessage({ id, type: 'cancel' } satisfies TerrainWorkerRequest);
+      pending.reject(new Error(message));
+      this.pending.delete(id);
+    }
   }
 
   private handleWorkerMessage(message: TerrainWorkerResponse): void {
