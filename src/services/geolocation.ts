@@ -12,6 +12,7 @@ import {
 import type { AircraftState } from '../domain/types';
 
 export const GNSS_FIX_STALE_TIMEOUT_MS = 15_000;
+export const GNSS_MAXIMUM_AGE_MS = 1_000;
 
 export type GeolocationStatus =
   | 'idle'
@@ -79,7 +80,8 @@ export class GeolocationTracker {
       (error) => this.handleError(error),
       {
         enableHighAccuracy: true,
-        maximumAge: 1000,
+        // The Geolocation API controls callback frequency; this rejects cached fixes older than one second.
+        maximumAge: GNSS_MAXIMUM_AGE_MS,
         timeout: 10_000
       }
     );
