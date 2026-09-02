@@ -9,10 +9,15 @@ import type {
   LineOfSightBatchResult,
   TerrainMetadata,
   TerrainService,
-  Threat
+  Threat,
+  ThreatEvaluationSummary
 } from './domain/types';
 
 vi.mock('./ui/map-controller', () => ({ MapController: vi.fn() }));
+vi.mock('./ui/app-view', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('./ui/app-view')>();
+  return { ...actual, highlightNewEvaluation: vi.fn() };
+});
 
 import { ThreatEmulatorApp } from './threat-emulator-app';
 
@@ -23,7 +28,7 @@ type TestableThreatEmulatorApp = {
   emulatorRunRevision: number;
   emulatorActive: boolean;
   evaluationInFlight: boolean;
-  lastEvaluation: unknown;
+  lastEvaluation: ThreatEvaluationSummary | null;
   activeThreatOrder: string[];
   terrainService: TerrainService;
   terrainController: { metadata: TerrainMetadata | null };
@@ -101,6 +106,56 @@ describe('ThreatEmulatorApp evaluation lifecycle', () => {
     expect(app.threatRevision).toBe(5);
     expect(app.lastEvaluation).toBeNull();
     expect(events).toEqual(['evaluation canceled', 'evaluation requested']);
+  });
+
+  it('evaluates only the edited threat after canceling an in-flight batch', async () => {
+    const editedThreat = { ...threat, name: 'Updated', rangeKm: 30 };
+    let rejectObsoleteBatch!: (reason: Error) => void;
+    const obsoleteBatch = new Promise<LineOfSightBatchResult[]>((_resolve, reject) => {
+      rejectObsoleteBatch = reject;
+    });
+    const evaluateLineOfSightBatch = vi.fn()
+      .mockReturnValueOnce(obsoleteBatch)
+      .mockResolvedValueOnce([
+        { threatId: editedThreat.id, result: { status: 'clear', sampleCount: 1 } }
+      ]);
+    const terrainService = {
+      getMetadata: () => metadata,
+      evaluateLineOfSightBatch,
+      evaluateLineOfSight: vi.fn(),
+      cancelEvaluation: () => rejectObsoleteBatch(new Error('Threat evaluation was canceled.'))
+    } as unknown as TerrainService;
+    const app = Object.create(ThreatEmulatorApp.prototype) as TestableThreatEmulatorApp;
+    Object.assign(app, {
+      threats: [threat],
+      threatsModified: false,
+      threatRevision: 1,
+      emulatorRunRevision: 1,
+      emulatorActive: true,
+      evaluationInFlight: false,
+      lastEvaluation: null,
+      activeThreatOrder: [],
+      geolocationStatus: 'tracking',
+      geolocationMessage: 'GNSS position current.',
+      terrainService,
+      terrainController: { metadata },
+      aircraftAltitudeController: {
+        aircraftState: aircraft,
+        evaluationAircraftState: aircraft
+      },
+      render: vi.fn(),
+      setMessage: vi.fn()
+    });
+
+    const obsoleteEvaluation = app.evaluateNow();
+    await vi.waitFor(() => expect(evaluateLineOfSightBatch).toHaveBeenCalledTimes(1));
+    app.threats = [editedThreat];
+    app.commitThreatChange('Threat T001 updated.');
+    await obsoleteEvaluation;
+
+    await vi.waitFor(() => expect(evaluateLineOfSightBatch).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(app.lastEvaluation?.results[0]?.threat).toEqual(editedThreat));
+    expect(evaluateLineOfSightBatch.mock.calls[1][1]).toEqual([editedThreat]);
   });
 
   it('starts a fresh evaluation when an older run settles after rapid Stop and Start', async () => {

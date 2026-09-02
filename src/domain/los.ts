@@ -20,6 +20,7 @@ import type {
 } from './types';
 
 export type TerrainSampler = (latitude: number, longitude: number) => Promise<TerrainSample>;
+export type LineOfSightCancellationCheck = () => boolean;
 
 export const DEFAULT_MAX_LOS_SAMPLE_SPACING_M = 50;
 const MIN_LOS_SAMPLE_SPACING_M = 1;
@@ -62,15 +63,18 @@ export function calculateTerrainSampleSpacingM(metadata: TerrainMetadata, latitu
  * @param threat - Threat position, range metadata, and sensor height above local terrain.
  * @param sampler - Asynchronous terrain elevation provider.
  * @param options - Optional upper bound on sample spacing.
+ * @param isCancelled - Optional cooperative cancellation check evaluated around terrain reads.
  * @returns The line-of-sight status and sampling details.
- * @throws {Error} When the terrain sampler rejects a request.
+ * @throws {Error} When evaluation is canceled or the terrain sampler rejects a request.
  */
 export async function evaluateFlatEarthLineOfSight(
   aircraft: AircraftState,
   threat: Threat,
   sampler: TerrainSampler,
-  options: LineOfSightOptions = {}
+  options: LineOfSightOptions = {},
+  isCancelled: LineOfSightCancellationCheck = () => false
 ): Promise<LineOfSightResult> {
+  throwIfLineOfSightCancelled(isCancelled);
   if (threat.heightAglM === null) {
     return { status: 'clear', sampleCount: 0 };
   }
@@ -84,6 +88,7 @@ export async function evaluateFlatEarthLineOfSight(
   }
 
   const threatTerrain = await sampler(threat.latitude, threat.longitude);
+  throwIfLineOfSightCancelled(isCancelled);
   if (threatTerrain.status !== 'ok') {
     return {
       status: 'terrain-unavailable',
@@ -106,10 +111,12 @@ export async function evaluateFlatEarthLineOfSight(
   let sampleCount = 1;
 
   for (let index = 1; index < steps; index += 1) {
+    throwIfLineOfSightCancelled(isCancelled);
     const ratio = index / steps;
     const distanceFromThreatM = totalDistanceM * ratio;
     const point = destinationPoint(threatLocation, bearing, distanceFromThreatM);
     const sample = await sampler(point.latitude, point.longitude);
+    throwIfLineOfSightCancelled(isCancelled);
     sampleCount += 1;
 
     if (sample.status !== 'ok') {
@@ -139,4 +146,10 @@ export async function evaluateFlatEarthLineOfSight(
   }
 
   return { status: 'clear', sampleCount };
+}
+
+function throwIfLineOfSightCancelled(isCancelled: LineOfSightCancellationCheck): void {
+  if (isCancelled()) {
+    throw new Error('Line-of-sight evaluation was canceled.');
+  }
 }
