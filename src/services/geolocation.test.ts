@@ -6,6 +6,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   GNSS_FIX_STALE_TIMEOUT_MS,
+  GNSS_MAXIMUM_AGE_MS,
   GeolocationTracker,
   isGnssFixFresh,
   type GeolocationStatus
@@ -50,6 +51,11 @@ describe('GNSS freshness', () => {
     );
 
     tracker.start();
+    expect(navigator.geolocation.watchPosition).toHaveBeenCalledWith(
+      expect.any(Function),
+      expect.any(Function),
+      expect.objectContaining({ maximumAge: GNSS_MAXIMUM_AGE_MS })
+    );
     const fix = {
       coords: {
         latitude: 50,

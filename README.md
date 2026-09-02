@@ -20,8 +20,8 @@ The app is built with TypeScript, Vite, Vitest, Leaflet, `geotiff`, `papaparse`,
 - Can remember a local GeoTIFF through a persistent file handle on compatible browsers.
 - Offers a download link for the elevation GeoTIFF when no terrain file is loaded or remembered.
 - Converts browser WGS84 ellipsoid altitude to EGM96 orthometric MSL altitude, then calculates height above ground from local terrain elevation.
-- Coalesces queued aircraft terrain samples to the newest GNSS fix so frequent position updates do not delay threat line-of-sight calculations.
-- Publishes every GNSS position, accuracy, and track update immediately even when GPS altitude is temporarily unavailable or cannot be converted.
+- Publishes every GNSS position, accuracy, and track update immediately while requesting fixes no more than one second old; browser and device still control the actual callback frequency.
+- Converts altitude, samples aircraft AGL, and refreshes the immutable threat-evaluation snapshot only from every third received fix, preventing aircraft terrain reads from delaying LOS calculations.
 - Stops active evaluation when browser geolocation fails or no new GNSS fix arrives for 15 seconds, preventing warnings based on an indefinitely stale aircraft position.
 - Evaluates threats every 3 seconds while the emulator is active.
 - Shows whether evaluation is running through the Start/Stop button, warning area, and evaluation countdown without a redundant header status badge.
@@ -159,7 +159,7 @@ For each valid threat, the emulator:
 
 The Threat Display uses those same active results and clock codes but intentionally omits description and distance. It shows one fixed-radius rocket for each occupied clock direction and no rocket when direction cannot be resolved from aircraft track.
 
-Every GNSS fix immediately replaces the displayed and evaluable aircraft position, accuracy, track, and timestamp. EGM96 altitude conversion is then applied only if that fix is still the newest one. Until conversion finishes, altitude-dependent threats may report aircraft state unavailable, while magic threats can still use the current horizontal position. A missing altitude or failed conversion never prevents later position fields from updating. Browser geolocation errors and 15 seconds without a new fix stop the emulator and clear prior warning results.
+Every GNSS fix immediately replaces the displayed position, accuracy, track, and timestamp. The browser is asked not to return cached fixes older than one second, but the Geolocation API does not provide a forced polling interval and the device controls the actual update frequency. Every third received fix is selected for EGM96 conversion and one aircraft AGL terrain sample; once ready, that fixed position and altitude become the immutable input snapshot for threat evaluation. Intermediate fixes update the display but do not start altitude or terrain work and do not alter an LOS calculation already in progress. A missing altitude or failed conversion never prevents later position fields from updating. Browser geolocation errors and 15 seconds without a new fix stop the emulator and clear prior warning results.
 
 V1 does not model earth curvature, atmospheric refraction, or buildings. The map is a situational display and does not alter threat evaluation.
 

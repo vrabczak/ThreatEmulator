@@ -320,7 +320,7 @@ export class ThreatEmulatorApp {
     try {
       const evaluation = await evaluateThreats(
         [...this.threats],
-        this.aircraftAltitudeController.aircraftState,
+        this.aircraftAltitudeController.evaluationAircraftState,
         this.terrainService
       );
       // Ignore results from a run that was stopped or whose threat inputs changed while evaluation was pending.
@@ -395,7 +395,12 @@ export class ThreatEmulatorApp {
       return this.geolocationMessage;
     }
     if (
-      aircraftState.gpsAltitudeM === null &&
+      this.aircraftAltitudeController.evaluationAircraftState === null
+    ) {
+      return 'Wait for every third GNSS fix to prepare the threat-evaluation snapshot.';
+    }
+    if (
+      this.aircraftAltitudeController.evaluationAircraftState.gpsAltitudeM === null &&
       this.threats.every((threat) => threat.heightAglM !== null)
     ) {
       return 'Aircraft GPS altitude is unavailable.';

@@ -27,7 +27,10 @@ type TestableThreatEmulatorApp = {
   activeThreatOrder: string[];
   terrainService: TerrainService;
   terrainController: { metadata: TerrainMetadata | null };
-  aircraftAltitudeController: { aircraftState: AircraftState | null };
+  aircraftAltitudeController: {
+    aircraftState: AircraftState | null;
+    evaluationAircraftState: AircraftState | null;
+  };
   commitThreatChange: (message: string) => void;
   evaluateNow: () => Promise<void>;
   render: () => void;
@@ -132,7 +135,10 @@ describe('ThreatEmulatorApp evaluation lifecycle', () => {
       geolocationMessage: 'GNSS position current.',
       terrainService,
       terrainController: { metadata },
-      aircraftAltitudeController: { aircraftState: aircraft },
+      aircraftAltitudeController: {
+        aircraftState: aircraft,
+        evaluationAircraftState: aircraft
+      },
       render: vi.fn(),
       setMessage: vi.fn()
     });

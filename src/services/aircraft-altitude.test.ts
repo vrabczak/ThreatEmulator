@@ -41,13 +41,16 @@ describe('AircraftAltitudeController', () => {
     });
     const first = aircraftFix(50, 14, 1_000);
     const second = aircraftFix(50.001, 14.002, 2_000);
+    const third = aircraftFix(50.002, 14.004, 3_000);
 
     controller.acceptFix(first);
     controller.acceptFix(second);
+    controller.acceptFix(third);
 
-    expect(controller.aircraftState).toEqual(second);
+    expect(controller.aircraftState).toEqual(third);
+    expect(controller.evaluationAircraftState).toEqual(third);
     expect(controller.terrainReason).toBe('Aircraft GPS altitude is unavailable.');
-    expect(onStateChanged).toHaveBeenCalledTimes(2);
+    expect(onStateChanged).toHaveBeenCalledTimes(4);
   });
 
   it('publishes a newer fix while EGM96 conversion is pending or fails', async () => {
@@ -64,14 +67,61 @@ describe('AircraftAltitudeController', () => {
     });
     const first = aircraftFix(50, 14, 1_000, 450);
     const second = aircraftFix(50.001, 14.002, 2_000, 451);
+    const third = aircraftFix(50.002, 14.004, 3_000, 452);
+    const fourth = aircraftFix(50.003, 14.006, 4_000, 453);
 
     controller.acceptFix(first);
     controller.acceptFix(second);
+    controller.acceptFix(third);
+    controller.acceptFix(fourth);
 
-    expect(controller.aircraftState).toEqual(second);
+    expect(controller.aircraftState).toEqual(fourth);
     rejectGridLoad(new Error('Grid unavailable.'));
     await vi.waitFor(() => expect(controller.terrainReason).toBe('Grid unavailable.'));
-    expect(controller.aircraftState).toEqual(second);
+    expect(controller.aircraftState).toEqual(fourth);
+  });
+
+  it('derives altitude, AGL, and the evaluation snapshot only from every third fix', async () => {
+    const sampleElevation = vi.fn().mockResolvedValue({ status: 'ok', elevationM: 300 });
+    const controller = new AircraftAltitudeController({
+      terrainService: { sampleElevation } as unknown as TerrainService,
+      onStateChanged: vi.fn()
+    });
+    const convertAltitude = vi.fn().mockResolvedValue(420);
+    (controller as unknown as {
+      geoidModel: { ellipsoidHeightToMslM: typeof convertAltitude };
+    }).geoidModel.ellipsoidHeightToMslM = convertAltitude;
+    controller.setTerrainMetadata({
+      fileName: 'terrain.tif',
+      fileSize: 1,
+      width: 1,
+      height: 1,
+      bbox: [13, 49, 15, 51],
+      resolutionDeg: { longitude: 1, latitude: 1 },
+      samplesPerPixel: 1,
+      tileWidth: 1,
+      tileHeight: 1,
+      noDataValue: null,
+      isWgs84: true,
+      warnings: []
+    });
+
+    controller.acceptFix(aircraftFix(50, 14, 1_000, 450));
+    controller.acceptFix(aircraftFix(50.001, 14.001, 2_000, 451));
+    expect(convertAltitude).not.toHaveBeenCalled();
+    expect(sampleElevation).not.toHaveBeenCalled();
+    expect(controller.evaluationAircraftState).toBeNull();
+
+    controller.acceptFix(aircraftFix(50.002, 14.002, 3_000, 452));
+    await vi.waitFor(() => expect(controller.evaluationAircraftState?.timestampMs).toBe(3_000));
+    expect(convertAltitude).toHaveBeenCalledTimes(1);
+    expect(sampleElevation).toHaveBeenCalledTimes(1);
+    expect(controller.evaluationAircraftState).toMatchObject({
+      latitude: 50.002,
+      longitude: 14.002,
+      gpsAltitudeM: 420,
+      aglM: 120
+    });
   });
 
   it('coalesces terrain samples while preserving the newest GNSS fix', async () => {
@@ -102,13 +152,13 @@ describe('AircraftAltitudeController', () => {
     });
 
     const testableController = controller as unknown as {
-      latestFixTimestampMs: number;
+      selectedFixTimestampMs: number;
       scheduleAglRefresh: (state: AircraftState) => void;
     };
     const first = { ...aircraftFix(50, 14, 1_000, 450), gpsAltitudeM: 410 };
     const second = { ...aircraftFix(50.001, 14.001, 2_000, 451), gpsAltitudeM: 411 };
     const third = { ...aircraftFix(50.002, 14.002, 3_000, 452), gpsAltitudeM: 412 };
-    testableController.latestFixTimestampMs = third.timestampMs;
+    testableController.selectedFixTimestampMs = third.timestampMs;
     testableController.scheduleAglRefresh(first);
     await vi.waitFor(() => expect(sampleElevation).toHaveBeenCalledTimes(1));
     testableController.scheduleAglRefresh(second);

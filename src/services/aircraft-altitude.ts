@@ -1,6 +1,6 @@
 /**
- * Publishes current GNSS aircraft data and coordinates asynchronous altitude and terrain processing.
- * EGM96 conversion and terrain requests may finish out of order, so the latest GNSS timestamp always wins.
+ * Publishes current GNSS aircraft data and derives an evaluation snapshot from every third fix.
+ * EGM96 conversion and terrain requests may finish out of order, so the latest selected snapshot always wins.
  */
 
 import { calculateAgl, resolveTerrainElevationM } from '../domain/altitude';
@@ -13,14 +13,17 @@ export interface AircraftAltitudeControllerOptions {
 }
 
 /**
- * Owns the latest aircraft state and its terrain-elevation fallback.
- * Raw position data is published immediately, while converted altitude is applied only to the matching latest fix.
+ * Owns the latest display state and the less-frequent snapshot used by threat evaluation.
+ * Raw position data is published immediately, while MSL altitude and AGL are refreshed from every third fix.
  */
 export class AircraftAltitudeController {
   private readonly geoidModel = new Egm96GeoidModel();
   private aircraft: AircraftState | null = null;
+  private evaluationAircraft: AircraftState | null = null;
   private terrainMetadata: TerrainMetadata | null = null;
   private latestFixTimestampMs: number | null = null;
+  private selectedFixTimestampMs: number | null = null;
+  private fixCount = 0;
   private lastTerrainElevationM: number | null = null;
   private lastTerrainReason: string | null = null;
   private aglRefreshInFlight = false;
@@ -41,6 +44,14 @@ export class AircraftAltitudeController {
   }
 
   /**
+   * Gets the last fully processed third GNSS fix used as an immutable threat-evaluation snapshot.
+   * @returns The selected aircraft state with converted altitude and current AGL, or `null` before it is ready.
+   */
+  public get evaluationAircraftState(): AircraftState | null {
+    return this.evaluationAircraft;
+  }
+
+  /**
    * Gets the current terrain sampling or altitude-conversion warning.
    * @returns A user-facing reason, or `null` when altitude processing is current.
    */
@@ -49,17 +60,34 @@ export class AircraftAltitudeController {
   }
 
   /**
-   * Accepts a raw browser GNSS fix and starts its asynchronous EGM96 conversion.
+   * Accepts a raw browser GNSS fix and processes altitude and AGL for every third fix.
    * @param state - Normalized aircraft state containing ellipsoid altitude.
    * @returns Nothing.
    */
   public acceptFix(state: AircraftState): void {
     this.latestFixTimestampMs = state.timestampMs;
-    // Position, accuracy, and track must never wait for optional altitude conversion.
-    this.aircraft = state;
-    this.lastTerrainReason =
-      state.gpsEllipsoidAltitudeM === null ? 'Aircraft GPS altitude is unavailable.' : null;
+    this.fixCount += 1;
+    // Position, accuracy, and track refresh on every browser fix. Derived values remain stable until
+    // the next selected fix finishes, preventing the UI and evaluator from alternating through nulls.
+    this.aircraft = {
+      ...state,
+      gpsAltitudeM: this.aircraft?.gpsAltitudeM ?? null,
+      aglM: this.aircraft?.aglM ?? null
+    };
     this.options.onStateChanged();
+
+    if (this.fixCount % 3 !== 0) {
+      return;
+    }
+
+    this.selectedFixTimestampMs = state.timestampMs;
+    if (state.gpsEllipsoidAltitudeM === null) {
+      this.evaluationAircraft = state;
+      this.aircraft = { ...this.aircraft, gpsAltitudeM: null, aglM: null };
+      this.lastTerrainReason = 'Aircraft GPS altitude is unavailable.';
+      this.options.onStateChanged();
+      return;
+    }
     void this.convertAltitudeToMsl(state);
   }
 
@@ -72,13 +100,12 @@ export class AircraftAltitudeController {
     this.terrainMetadata = metadata;
     this.lastTerrainElevationM = null;
     this.lastTerrainReason = null;
+    this.evaluationAircraft = null;
+    this.queuedAglState = null;
     if (this.aircraft) {
       this.aircraft = { ...this.aircraft, aglM: null };
     }
     this.options.onStateChanged();
-    if (metadata && this.aircraft) {
-      this.scheduleAglRefresh(this.aircraft);
-    }
   }
 
   private async convertAltitudeToMsl(state: AircraftState): Promise<void> {
@@ -94,10 +121,7 @@ export class AircraftAltitudeController {
         state.longitude
       );
     } catch (error) {
-      if (
-        this.latestFixTimestampMs === state.timestampMs &&
-        this.aircraft?.timestampMs === state.timestampMs
-      ) {
+      if (this.selectedFixTimestampMs === state.timestampMs) {
         this.lastTerrainReason =
           error instanceof Error ? error.message : 'Unable to convert GPS altitude to MSL.';
         this.options.onStateChanged();
@@ -105,8 +129,8 @@ export class AircraftAltitudeController {
       return;
     }
 
-    // Geoid loading/conversion is asynchronous; a newer GNSS fix must always win this race.
-    if (this.latestFixTimestampMs !== state.timestampMs) {
+    // Non-selected fixes may arrive while conversion runs; only a newer third fix supersedes this snapshot.
+    if (this.selectedFixTimestampMs !== state.timestampMs) {
       return;
     }
 
@@ -115,13 +139,21 @@ export class AircraftAltitudeController {
       gpsAltitudeM: gpsAltitudeMslM,
       aglM: calculateAgl(gpsAltitudeMslM, this.lastTerrainElevationM)
     };
-    this.aircraft = convertedState;
+    this.aircraft = {
+      ...(this.aircraft ?? state),
+      gpsAltitudeM: convertedState.gpsAltitudeM,
+      aglM: convertedState.aglM
+    };
     this.lastTerrainReason =
       this.lastTerrainElevationM === null
         ? null
         : 'Using last retrieved terrain elevation while the current lookup completes.';
     this.options.onStateChanged();
-    this.scheduleAglRefresh(convertedState);
+    if (this.terrainMetadata) {
+      this.scheduleAglRefresh(convertedState);
+    } else {
+      this.evaluationAircraft = convertedState;
+    }
   }
 
   private scheduleAglRefresh(state: AircraftState): void {
@@ -141,7 +173,7 @@ export class AircraftAltitudeController {
       this.aglRefreshInFlight = false;
       const queuedState = this.queuedAglState;
       this.queuedAglState = null;
-      if (queuedState && queuedState.timestampMs === this.latestFixTimestampMs) {
+      if (queuedState && queuedState.timestampMs === this.selectedFixTimestampMs) {
         this.scheduleAglRefresh(queuedState);
       }
     });
@@ -161,8 +193,8 @@ export class AircraftAltitudeController {
         reason: error instanceof Error ? error.message : 'Unable to read aircraft terrain elevation.'
       };
     }
-    // Terrain sampling can finish out of order, so never apply AGL to a newer aircraft fix.
-    if (this.aircraft?.timestampMs !== state.timestampMs) {
+    // Intermediate display fixes do not supersede a selected snapshot; only the next third fix does.
+    if (this.selectedFixTimestampMs !== state.timestampMs) {
       return;
     }
 
@@ -176,9 +208,14 @@ export class AircraftAltitudeController {
       this.lastTerrainReason = sample.reason;
     }
 
-    this.aircraft = {
+    this.evaluationAircraft = {
       ...state,
       aglM: calculateAgl(state.gpsAltitudeM, terrainElevationM)
+    };
+    this.aircraft = {
+      ...(this.aircraft ?? state),
+      gpsAltitudeM: this.evaluationAircraft.gpsAltitudeM,
+      aglM: this.evaluationAircraft.aglM
     };
     this.options.onStateChanged();
   }
