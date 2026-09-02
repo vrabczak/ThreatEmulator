@@ -13,11 +13,17 @@ import type {
   TerrainSample,
   Threat
 } from '../domain/types';
+import { RasterBlockCache, type DecodedRasterBlock } from './raster-block-cache';
 import type { TerrainWorkerRequest, TerrainWorkerResponse } from './terrain-worker-protocol';
+
+const MAX_DECODED_RASTER_CACHE_BYTES = 64 * 1024 * 1024;
 
 let image: GeoTIFFImage | null = null;
 let metadata: TerrainMetadata | null = null;
+let terrainGeneration = 0;
 const cancelled = new Set<string>();
+const rasterBlockCache = new RasterBlockCache(MAX_DECODED_RASTER_CACHE_BYTES);
+const pendingRasterBlocks = new Map<string, Promise<DecodedRasterBlock>>();
 
 self.onmessage = (event: MessageEvent<TerrainWorkerRequest>) => {
   void handleRequest(event.data);
@@ -31,8 +37,11 @@ async function handleRequest(request: TerrainWorkerRequest): Promise<void> {
 
   try {
     if (request.type === 'load') {
+      terrainGeneration += 1;
       image = null;
       metadata = null;
+      rasterBlockCache.clear();
+      pendingRasterBlocks.clear();
       const tiff = await fromBlob(request.file);
       image = await tiff.getImage();
       metadata = await readMetadata(request.file, image);
@@ -173,14 +182,17 @@ async function readNoDataValue(loadedImage: GeoTIFFImage): Promise<number | null
 }
 
 async function sampleElevation(latitude: number, longitude: number): Promise<TerrainSample> {
-  if (!image || !metadata) {
+  const loadedImage = image;
+  const loadedMetadata = metadata;
+  const loadedGeneration = terrainGeneration;
+  if (!loadedImage || !loadedMetadata) {
     return {
       status: 'terrain-unavailable',
       reason: 'GeoTIFF is not loaded.'
     };
   }
 
-  const pixel = coordinateToPixel(latitude, longitude, metadata);
+  const pixel = coordinateToPixel(latitude, longitude, loadedMetadata);
   if (!pixel) {
     return {
       status: 'terrain-unavailable',
@@ -189,15 +201,12 @@ async function sampleElevation(latitude: number, longitude: number): Promise<Ter
   }
 
   try {
-    // A one-pixel window avoids decoding unrelated raster regions when the GeoTIFF is tiled.
-    const raster = await image.readRasters({
-      window: [pixel.x, pixel.y, pixel.x + 1, pixel.y + 1],
-      samples: [0],
-      interleave: true,
-      width: 1,
-      height: 1
-    });
-    const rawValue = Number((raster as unknown as ArrayLike<number>)[0]);
+    const rawValue = await readElevationPixel(
+      loadedImage,
+      pixel.x,
+      pixel.y,
+      loadedGeneration
+    );
 
     if (!Number.isFinite(rawValue)) {
       return {
@@ -206,7 +215,7 @@ async function sampleElevation(latitude: number, longitude: number): Promise<Ter
       };
     }
 
-    if (metadata.noDataValue !== null && Object.is(rawValue, metadata.noDataValue)) {
+    if (loadedMetadata.noDataValue !== null && Object.is(rawValue, loadedMetadata.noDataValue)) {
       return {
         status: 'terrain-unavailable',
         reason: 'Terrain elevation is NoData at this coordinate.'
@@ -222,6 +231,97 @@ async function sampleElevation(latitude: number, longitude: number): Promise<Ter
       status: 'terrain-unavailable',
       reason: error instanceof Error ? error.message : 'Unable to read terrain sample.'
     };
+  }
+}
+
+async function readElevationPixel(
+  loadedImage: GeoTIFFImage,
+  pixelX: number,
+  pixelY: number,
+  generation: number
+): Promise<number> {
+  const blockWidth = loadedImage.getTileWidth();
+  const blockHeight = loadedImage.getTileHeight();
+  const blockX = Math.floor(pixelX / blockWidth);
+  const blockY = Math.floor(pixelY / blockHeight);
+  const key = `${generation}:${blockX}:${blockY}`;
+  const blockStartX = blockX * blockWidth;
+  const blockStartY = blockY * blockHeight;
+  const actualWidth = Math.min(blockWidth, loadedImage.getWidth() - blockStartX);
+  const actualHeight = Math.min(blockHeight, loadedImage.getHeight() - blockStartY);
+  const estimatedByteLength = actualWidth * actualHeight * loadedImage.getSampleByteSize(0);
+
+  // A very large strip must not defeat the cache budget or force a large retained output array.
+  if (estimatedByteLength > MAX_DECODED_RASTER_CACHE_BYTES) {
+    const raster = await loadedImage.readRasters({
+      window: [pixelX, pixelY, pixelX + 1, pixelY + 1],
+      samples: [0],
+      interleave: true,
+      width: 1,
+      height: 1
+    });
+    return Number((raster as unknown as ArrayLike<number>)[0]);
+  }
+
+  const block =
+    rasterBlockCache.get(key) ??
+    (await getOrReadRasterBlock(
+      loadedImage,
+      key,
+      blockStartX,
+      blockStartY,
+      actualWidth,
+      actualHeight,
+      generation
+    ));
+  const localX = pixelX - blockStartX;
+  const localY = pixelY - blockStartY;
+  return Number(block.values[localY * block.width + localX]);
+}
+
+async function getOrReadRasterBlock(
+  loadedImage: GeoTIFFImage,
+  key: string,
+  startX: number,
+  startY: number,
+  width: number,
+  height: number,
+  generation: number
+): Promise<DecodedRasterBlock> {
+  const existingRequest = pendingRasterBlocks.get(key);
+  if (existingRequest) {
+    return existingRequest;
+  }
+
+  // Store the promise immediately so overlapping AGL and LOS reads decode this block only once.
+  const blockRequest = (async (): Promise<DecodedRasterBlock> => {
+    const raster = await loadedImage.readRasters({
+      window: [startX, startY, startX + width, startY + height],
+      samples: [0],
+      interleave: true
+    });
+    const values = raster as unknown as ArrayLike<number> & { byteLength?: number };
+    const block: DecodedRasterBlock = {
+      values,
+      width,
+      height,
+      byteLength: values.byteLength ?? values.length * loadedImage.getSampleByteSize(0)
+    };
+
+    // A stale read from a replaced terrain file must never populate the active file's cache.
+    if (generation === terrainGeneration && loadedImage === image) {
+      rasterBlockCache.set(key, block);
+    }
+    return block;
+  })();
+  pendingRasterBlocks.set(key, blockRequest);
+
+  try {
+    return await blockRequest;
+  } finally {
+    if (pendingRasterBlocks.get(key) === blockRequest) {
+      pendingRasterBlocks.delete(key);
+    }
   }
 }
 
