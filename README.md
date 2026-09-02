@@ -8,6 +8,7 @@ The app is built with TypeScript, Vite, Vitest, Leaflet, `geotiff`, `papaparse`,
 
 - Runs entirely in the browser as a static single-page app.
 - Supports offline launch as a PWA after installation.
+- Opens the installed mobile PWA in portrait orientation.
 - Switches between a light white/black/grey/blue/red theme and a dark black/grey/white/green/red theme, remembering the selection on the device.
 - Keeps header actions in the same row as the brand and aligned to the right edge on narrow screens.
 - Prevents browser-level zooming of the application while retaining Leaflet map zoom controls, mouse-wheel zoom, and touch pinch zoom.

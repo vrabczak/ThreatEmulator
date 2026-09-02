@@ -1,5 +1,6 @@
 /**
- * Configures Vite, Vitest typing, GitHub Pages base paths, and offline PWA asset caching.
+ * Configures Vite, Vitest typing, GitHub Pages base paths, and offline PWA behavior.
+ * Installed PWA launches are constrained to portrait orientation.
  * Deployment base detection assumes GitHub exposes the standard GITHUB_REPOSITORY variable.
  */
 
@@ -22,7 +23,7 @@ export default defineConfig({
         theme_color: '#111827',
         background_color: '#f8fafc',
         display: 'standalone',
-        orientation: 'landscape',
+        orientation: 'portrait',
         scope: './',
         start_url: './',
         icons: [

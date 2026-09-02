@@ -39,6 +39,7 @@ The application runs entirely in the browser, uses user-selected local files and
 - Header actions remain in the same row as the brand and aligned to the right edge on narrow displays.
 - Browser-level zooming of the application is disabled for keyboard shortcuts, modified mouse-wheel input, and touch pinch gestures. Leaflet map zoom through its controls, wheel, and touch gestures remains enabled.
 - The app should be installable as a PWA for offline launch.
+- The installed mobile PWA must launch and remain in portrait orientation.
 - CSV files are expected to be no larger than 1 MB.
 - GeoTIFF files are expected to be large, approximately 1-3 GB.
 - The repository should include a sample CSV fixture, but not a sample GeoTIFF fixture.
@@ -323,6 +324,7 @@ UI implementation responsibilities are separated by feature: the entry module on
 
 - The app must not require a backend after initial load.
 - The app should be installable as a PWA.
+- Installed mobile PWA launches must request portrait orientation through the web app manifest.
 - Static app assets should be cached for offline launch.
 - Leaflet code and styles are bundled with the app and remain available offline.
 - The selected OpenStreetMap, OpenTopoMap, configured Mapy.com outdoor/aerial, or configured Google satellite layer is added only while `navigator.onLine` reports online. The base layer is removed when the browser goes offline, leaving aircraft markers, threat markers, range circles, zoom/pan controls, and a neutral grid background available.
