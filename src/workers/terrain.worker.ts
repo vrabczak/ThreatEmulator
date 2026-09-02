@@ -5,7 +5,11 @@
 
 import { fromBlob, type GeoTIFFImage } from 'geotiff';
 import { coordinateToPixel } from '../domain/geo';
-import { calculateTerrainSampleSpacingM, evaluateFlatEarthLineOfSight } from '../domain/los';
+import {
+  calculateTerrainSampleSpacingM,
+  evaluateFlatEarthLineOfSight,
+  type TerrainSampler
+} from '../domain/los';
 import type {
   AircraftState,
   LineOfSightOptions,
@@ -17,21 +21,38 @@ import { RasterBlockCache, type DecodedRasterBlock } from './raster-block-cache'
 import type { TerrainWorkerRequest, TerrainWorkerResponse } from './terrain-worker-protocol';
 
 const MAX_DECODED_RASTER_CACHE_BYTES = 64 * 1024 * 1024;
+const LOS_EVENT_LOOP_YIELD_SAMPLE_COUNT = 128;
 
 let image: GeoTIFFImage | null = null;
 let metadata: TerrainMetadata | null = null;
 let terrainGeneration = 0;
 const cancelled = new Set<string>();
+const trackedRequests = new Set<string>();
 const rasterBlockCache = new RasterBlockCache(MAX_DECODED_RASTER_CACHE_BYTES);
 const pendingRasterBlocks = new Map<string, Promise<DecodedRasterBlock>>();
+let lineOfSightQueue = Promise.resolve();
 
 self.onmessage = (event: MessageEvent<TerrainWorkerRequest>) => {
-  void handleRequest(event.data);
+  const request = event.data;
+  if (request.type === 'cancel') {
+    if (trackedRequests.has(request.id)) {
+      cancelled.add(request.id);
+    }
+    return;
+  }
+
+  trackedRequests.add(request.id);
+  if (request.type === 'los' || request.type === 'los-batch') {
+    // Serialize LOS requests so replacement threat data cannot run beside obsolete terrain work.
+    lineOfSightQueue = lineOfSightQueue.then(() => runTrackedRequest(request));
+    return;
+  }
+
+  void runTrackedRequest(request);
 };
 
 async function handleRequest(request: TerrainWorkerRequest): Promise<void> {
-  if (request.type === 'cancel') {
-    cancelled.add(request.id);
+  if (request.type === 'cancel' || cancelled.delete(request.id)) {
     return;
   }
 
@@ -68,11 +89,13 @@ async function handleRequest(request: TerrainWorkerRequest): Promise<void> {
     }
 
     if (request.type === 'los') {
+      const requestSampler = createCancellableTerrainSampler(request.id);
       const result = await evaluateFlatEarthLineOfSight(
         request.aircraft,
         request.threat,
-        sampleElevation,
-        withTerrainSampleSpacing(request.aircraft, request.threat, request.options)
+        requestSampler,
+        withTerrainSampleSpacing(request.aircraft, request.threat, request.options),
+        () => cancelled.has(request.id)
       );
       postIfCurrent(request.id, {
         id: request.id,
@@ -83,6 +106,7 @@ async function handleRequest(request: TerrainWorkerRequest): Promise<void> {
     }
 
     const results = [];
+    const requestSampler = createCancellableTerrainSampler(request.id);
     for (const threat of request.threats) {
       if (cancelled.delete(request.id)) {
         return;
@@ -93,8 +117,9 @@ async function handleRequest(request: TerrainWorkerRequest): Promise<void> {
         result: await evaluateFlatEarthLineOfSight(
           request.aircraft,
           threat,
-          sampleElevation,
-          withTerrainSampleSpacing(request.aircraft, threat, request.options)
+          requestSampler,
+          withTerrainSampleSpacing(request.aircraft, threat, request.options),
+          () => cancelled.has(request.id)
         )
       });
     }
@@ -104,11 +129,40 @@ async function handleRequest(request: TerrainWorkerRequest): Promise<void> {
       results
     });
   } catch (error) {
+    if (cancelled.delete(request.id)) {
+      return;
+    }
     postIfCurrent(request.id, {
       id: request.id,
       type: 'error',
       message: error instanceof Error ? error.message : 'Unknown terrain worker error.'
     });
+  }
+}
+
+function createCancellableTerrainSampler(requestId: string): TerrainSampler {
+  let sampleCount = 0;
+  return async (latitude, longitude) => {
+    sampleCount += 1;
+    if (sampleCount % LOS_EVENT_LOOP_YIELD_SAMPLE_COUNT === 0) {
+      // Cached reads resolve as microtasks, so yield periodically to receive worker cancel messages.
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      if (cancelled.has(requestId)) {
+        throw new Error('Line-of-sight evaluation was canceled.');
+      }
+    }
+    return sampleElevation(latitude, longitude);
+  };
+}
+
+async function runTrackedRequest(
+  request: Exclude<TerrainWorkerRequest, { type: 'cancel' }>
+): Promise<void> {
+  try {
+    await handleRequest(request);
+  } finally {
+    trackedRequests.delete(request.id);
+    cancelled.delete(request.id);
   }
 }
 

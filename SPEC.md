@@ -26,7 +26,7 @@ The application runs entirely in the browser, uses user-selected local files and
 - Threat range uses horizontal ground distance.
 - With a loaded elevation model, line of sight uses a flat-earth terrain obstruction check. Without one, all threats are assumed to have clear line of sight and horizontal range is the only activation factor. Earth curvature and atmospheric refraction are out of scope for V1.
 - The emulator evaluates threats every 3 seconds while active.
-- Adding, editing, deleting, or replacing threats while the emulator is active must cancel obsolete LOS work and immediately evaluate the latest complete threat list without requiring Stop/Start. Aircraft terrain sampling for AGL must not be canceled by this refresh.
+- Adding, editing, deleting, or replacing threats while the emulator is active must cancel obsolete LOS work at its next terrain-sampling checkpoint and evaluate only the latest complete threat list without requiring manual Stop/Start. Replacement LOS work must wait until obsolete worker work has exited, obsolete results must never be applied, and aircraft terrain sampling for AGL must not be canceled by this refresh.
 - Warnings are visual only.
 - Every active threat has its own large text warning row.
 - Warning rows retain first-appearance order while active; a reactivated threat is appended as a new row.
@@ -81,7 +81,7 @@ Final library selection should be confirmed during implementation, especially fo
 10. Every 3 seconds, the app evaluates the last fully processed third-fix snapshot against the current working threat list. Position and altitude are captured once at evaluation start and remain unchanged for that calculation. If geolocation fails or supplies no new fix for 15 seconds, the app stops the emulator and clears existing warnings until the user receives a current fix and starts it again.
 11. If one or more threats are active, the app displays one large visual warning row per active threat in first-appearance order.
 12. The first left-column panel is an initially expanded Threat Display that places a red rocket at every occupied GPS-track-relative clock direction. Every rocket uses the same fixed radius, so the display communicates threat direction and existence without distance.
-13. User can stop the emulator, import a replacement CSV, add/edit/delete individual threats, or export the current non-empty list. Changes made while active cancel stale LOS work and immediately trigger evaluation of the latest threat list without requiring Stop/Start.
+13. User can stop the emulator, import a replacement CSV, add/edit/delete individual threats, or export the current non-empty list. Changes made while active interrupt stale LOS terrain sampling, discard its result, and evaluate only the latest threat list without requiring manual Stop/Start.
 14. User can see aircraft latitude/longitude, GPS altitude, height above ground level, GPS precision, and track status.
 15. User can expand the Map panel to view the aircraft, threats, and threat effective ranges, select OpenStreetMap, OpenTopoMap, configured Mapy.com outdoor/aerial tiles, or configured Google satellite imagery through Leaflet's in-map layer button, and optionally keep the map centered on the latest aircraft position through a separate in-map Leaflet button. The app shows the selected tiles while online and an overlay-only grid while offline.
 16. User can long press a map location on a touch device, or right-click it with a mouse, to open a new-threat form populated with that location and scroll the application to the editor. If a threat form is already visible, the gesture updates only its position, switches it to decimal-coordinate placement without resetting the other form values or current edit target, and scrolls back to the editor.
@@ -225,6 +225,8 @@ Algorithm:
 7. Line of sight is blocked if terrain is at or above the sight line at any sample.
 
 GPS altitude accuracy is not added as a line-of-sight margin, and sight-line elevations are compared without integer rounding.
+
+LOS cancellation is cooperative around every terrain sample. The terrain worker serializes LOS requests so replacement work for a changed threat list begins only after the obsolete request has observed cancellation and exited. Non-LOS terrain requests, including aircraft AGL sampling, remain independent.
 
 Out of scope for V1:
 
@@ -381,6 +383,7 @@ The app should show actionable errors for:
 ## Performance Considerations
 
 - Threat evaluation runs every 3 seconds.
+- Terrain-worker LOS requests run serially; a canceled request must exit at a sampling checkpoint before its replacement starts.
 - CSV files are small, at most 1 MB.
 - GeoTIFF files are large, approximately 1-3 GB.
 - The app must avoid full-raster reads.

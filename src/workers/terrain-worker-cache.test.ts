@@ -94,6 +94,89 @@ describe('terrain worker raster block cache', () => {
       }
     ]);
   });
+
+  it('stops a canceled LOS batch before running the replacement batch', async () => {
+    let resolveRaster: ((raster: Int16Array) => void) | undefined;
+    const readRasters = vi.fn(
+      () =>
+        new Promise<Int16Array>((resolve) => {
+          resolveRaster = resolve;
+        })
+    );
+    fromBlobMock.mockResolvedValue({ getImage: async () => createImage(readRasters) });
+    const worker = await loadWorker();
+
+    worker.send({ id: 'load', type: 'load', file: {} as File });
+    await vi.waitFor(() => expect(worker.responses()).toHaveLength(1));
+    worker.send({
+      id: 'obsolete-los',
+      type: 'los-batch',
+      aircraft: createAircraft(),
+      threats: [createThreat('obsolete-los', 10)]
+    });
+    await vi.waitFor(() => expect(readRasters).toHaveBeenCalledTimes(1));
+
+    worker.send({ id: 'obsolete-los', type: 'cancel' });
+    worker.send({
+      id: 'current-los',
+      type: 'los-batch',
+      aircraft: createAircraft(),
+      threats: [createThreat('current-threat', null)]
+    });
+    resolveRaster?.(new Int16Array(256 * 256).fill(100));
+    await vi.waitFor(() => expect(worker.responses()).toHaveLength(2));
+
+    expect(worker.responses()[1]).toEqual({
+      id: 'current-los',
+      type: 'los-batch-result',
+      results: [
+        {
+          threatId: 'current-threat',
+          result: { status: 'clear', sampleCount: 0 }
+        }
+      ]
+    });
+    expect(worker.responses().some((response) => response.id === 'obsolete-los')).toBe(false);
+  });
+
+  it('receives cancellation during a long LOS served entirely from cache', async () => {
+    const readRasters = vi.fn(async (options: { window: number[] }) => {
+      const width = options.window[2] - options.window[0];
+      const height = options.window[3] - options.window[1];
+      return new Int16Array(width * height).fill(100);
+    });
+    fromBlobMock.mockResolvedValue({ getImage: async () => createImage(readRasters) });
+    const worker = await loadWorker();
+
+    worker.send({ id: 'load', type: 'load', file: {} as File });
+    await vi.waitFor(() => expect(worker.responses()).toHaveLength(1));
+    worker.send({ id: 'warm-cache', type: 'sample', latitude: 49.9, longitude: 14.01 });
+    await vi.waitFor(() => expect(worker.responses()).toHaveLength(2));
+
+    worker.send({
+      id: 'obsolete-cached-los',
+      type: 'los-batch',
+      aircraft: { ...createAircraft(), longitude: 14.49 },
+      threats: [{ ...createThreat('obsolete-cached-los', 10), longitude: 14.01 }]
+    });
+    setTimeout(() => {
+      worker.send({ id: 'obsolete-cached-los', type: 'cancel' });
+      worker.send({
+        id: 'current-cached-los',
+        type: 'los-batch',
+        aircraft: createAircraft(),
+        threats: [createThreat('current-cached-threat', null)]
+      });
+    }, 0);
+
+    await vi.waitFor(() =>
+      expect(worker.responses().some((response) => response.id === 'current-cached-los')).toBe(true)
+    );
+    expect(
+      worker.responses().some((response) => response.id === 'obsolete-cached-los')
+    ).toBe(false);
+    expect(readRasters).toHaveBeenCalledTimes(1);
+  });
 });
 
 function createImage(readRasters: ReturnType<typeof vi.fn>) {
@@ -108,6 +191,33 @@ function createImage(readRasters: ReturnType<typeof vi.fn>) {
     getSampleByteSize: () => 2,
     getGDALNoData: () => null,
     readRasters
+  };
+}
+
+function createAircraft() {
+  return {
+    latitude: 49.9,
+    longitude: 14.2,
+    gpsEllipsoidAltitudeM: 500,
+    gpsAltitudeM: 500,
+    gpsAltitudeAccuracyM: null,
+    gpsAccuracyM: null,
+    aglM: null,
+    trackDegrees: null,
+    trackSource: 'unavailable' as const,
+    trackAgeMs: null,
+    timestampMs: 1000
+  };
+}
+
+function createThreat(id: string, heightAglM: number | null) {
+  return {
+    id,
+    name: id,
+    latitude: 49.9,
+    longitude: 14.1,
+    heightAglM,
+    rangeKm: 20
   };
 }
 

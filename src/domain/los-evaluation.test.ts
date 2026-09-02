@@ -128,6 +128,27 @@ describe('line of sight', () => {
     expect(result.status).toBe('terrain-unavailable');
   });
 
+  it('interrupts terrain sampling as soon as cancellation is observed', async () => {
+    let cancelled = false;
+    let sampleCount = 0;
+    const sampler: TerrainSampler = async () => {
+      sampleCount += 1;
+      cancelled = true;
+      return { status: 'ok', elevationM: 100 };
+    };
+
+    await expect(
+      evaluateFlatEarthLineOfSight(
+        aircraft,
+        closeThreat,
+        sampler,
+        { maxSampleSpacingM: 10 },
+        () => cancelled
+      )
+    ).rejects.toThrow('Line-of-sight evaluation was canceled.');
+    expect(sampleCount).toBe(1);
+  });
+
   it('always returns clear for a magic threat without sampling terrain', async () => {
     let sampleCount = 0;
     const result = await evaluateFlatEarthLineOfSight(
