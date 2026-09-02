@@ -160,6 +160,7 @@ Large-file handling is a core V1 design constraint:
 
 - The app must not load the full GeoTIFF into memory.
 - Terrain reads should use metadata, windows, tiles, downsampling, and caching where possible.
+- The terrain worker must share a 64 MiB least-recently-used cache of decoded band-zero raster blocks between aircraft AGL and LOS sampling. Concurrent requests for the same block must share one pending read, the cache must be cleared before a replacement GeoTIFF is loaded, and a single block larger than the complete budget must use uncached point reads instead of being retained.
 - Line-of-sight evaluation should avoid blocking the UI thread.
 - A web worker should be considered for GeoTIFF parsing and terrain sampling.
 - The chosen GeoTIFF library must be validated against local 1-3 GB files on iPad mini.
@@ -383,7 +384,7 @@ The app should show actionable errors for:
 - CSV files are small, at most 1 MB.
 - GeoTIFF files are large, approximately 1-3 GB.
 - The app must avoid full-raster reads.
-- GeoTIFF metadata and raster windows should be cached where useful.
+- GeoTIFF metadata and decoded raster blocks should be cached where useful. The decoded-block cache is byte-bounded and may not cause the full raster to be retained.
 - Terrain sampling should be bounded to prevent long UI stalls.
 - Expensive GeoTIFF reads and LOS calculations should be candidates for a web worker.
 - Map overlay updates should reuse one Leaflet map and overlay layer rather than recreate the map for every GNSS fix. The map should initialize only when its collapsed panel is first opened.

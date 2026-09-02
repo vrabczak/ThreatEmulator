@@ -17,6 +17,7 @@ The app is built with TypeScript, Vite, Vitest, Leaflet, `geotiff`, `papaparse`,
 - Exports the current non-empty threat list as a semicolon-delimited CSV file.
 - Places manual threats by WGS84 decimal-degree coordinates, MGRS, or true bearing and distance from the latest aircraft position.
 - Optionally loads a user-selected local WGS84 elevation GeoTIFF for terrain-aware line-of-sight checks.
+- Reuses decoded GeoTIFF blocks through a 64 MiB least-recently-used terrain-worker cache shared by aircraft AGL and LOS sampling, without loading the complete elevation model into memory.
 - Stops an active emulator as soon as elevation import begins, then loads the selected GeoTIFF without overlapping threat evaluation.
 - Can remember a local GeoTIFF through a persistent file handle on compatible browsers.
 - Offers a download link for the elevation GeoTIFF when no terrain file is loaded or remembered.
@@ -46,6 +47,8 @@ The app is built with TypeScript, Vite, Vitest, Leaflet, `geotiff`, `papaparse`,
 
 Large GeoTIFF files are expected to be local user files and are not included in this repository.
 Remembering a GeoTIFF requires browser support for persistent local file handles. The app stores the file handle, not a copy of the multi-GB GeoTIFF; browsers without that API require selecting the file again after reload.
+
+Decoded band-zero raster tiles or strips are retained in a byte-bounded 64 MiB LRU cache inside the terrain worker. Repeated AGL and LOS samples in the same block reuse its decoded values, and overlapping requests share one read. Loading another elevation model clears the cache. A source block larger than the entire cache budget is sampled without retention to preserve the memory limit.
 
 ## Getting Started
 
